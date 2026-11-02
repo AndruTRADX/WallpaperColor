@@ -12,8 +12,10 @@
 //!    character on a grey background wins over the background. Skin tones (soft orange, shadows
 //!    included) count only `skin_weight` as much, and pale skin counts as grey: character art
 //!    is full of skin, which is rarely its colour.
-//! 5. Push it to full brightness and at least `min_saturation`: LEDs make pastel shades look
-//!    washed out, but too high a floor turns pinks into red and beige into orange.
+//! 5. Push it to full brightness. Dark colours (shadows of something vivid) are raised to at
+//!    least `min_saturation`, or they look washed out; light, barely saturated colours are
+//!    pastel and stay pastel (saturation × `pastel_gain`, below `min_saturation`), with a
+//!    smooth blend in between. A fixed floor turned soft peach into orange.
 //!    A picture with no real colour (black and white) gives white.
 //! 6. For the arc, keep taking the next most vivid entries whose hue is at least
 //!    `ARC_MIN_HUE_GAP` away from the ones already taken; when the picture has fewer distinct
@@ -40,6 +42,8 @@ pub struct ExtractConfig {
     pub min_share: f64,
     /// How much a skin tone counts when picking the colour (1 = like any other colour, 0 = never).
     pub skin_weight: f64,
+    /// Saturation multiplier for light colours (pastels), capped at `min_saturation`.
+    pub pastel_gain: f64,
 }
 
 impl Default for ExtractConfig {
@@ -49,8 +53,9 @@ impl Default for ExtractConfig {
             sample_size: 96,
             min_saturation: 0.7,
             min_chroma: 0.06,
-            min_share: 0.01,
+            min_share: 0.005,
             skin_weight: 0.15,
+            pastel_gain: 2.5,
         }
     }
 }
@@ -144,7 +149,7 @@ pub fn extract(img: &DynamicImage, cfg: &ExtractConfig) -> Result<Extraction, Ex
     let led_of = |hsv: Hsv| {
         Rgb::from_hsv(Hsv {
             h: hsv.h,
-            s: hsv.s.max(cfg.min_saturation as f32),
+            s: led_saturation(hsv, cfg),
             v: 1.0,
         })
     };
@@ -158,8 +163,23 @@ pub fn extract(img: &DynamicImage, cfg: &ExtractConfig) -> Result<Extraction, Ex
         });
     };
 
+    // Accents: rank the rest by colourfulness (chroma², skin discounted) over √share, so a
+    // small purple sparkle beats a large dull slate background.
+    let accent_score = |h: Hsv, share: f32| {
+        let skin = if is_skin(h) {
+            cfg.skin_weight as f32
+        } else {
+            1.0
+        };
+        (h.s * h.v).powi(2) * share.sqrt() * skin
+    };
+    let mut accents: Vec<(Hsv, f32)> = candidates[1..]
+        .iter()
+        .map(|&(_, h, share)| (h, accent_score(h, share)))
+        .collect();
+    accents.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut hues: Vec<Hsv> = vec![main];
-    for &(_, hsv, _) in &candidates[1..] {
+    for &(hsv, _) in &accents {
         if hues.len() == 3 {
             break;
         }
@@ -173,17 +193,19 @@ pub fn extract(img: &DynamicImage, cfg: &ExtractConfig) -> Result<Extraction, Ex
     let led = led_of(main);
     let mut arc: Vec<Rgb> = hues.into_iter().map(led_of).collect();
     if arc.len() < 3 {
-        // a lighter shade of the main colour
+        // a lighter shade of the main colour (paler than a pastel main colour too)
         arc.push(Rgb::from_hsv(Hsv {
             h: main.h,
-            s: 0.35,
+            s: (led.to_hsv().s * 0.5).min(0.35),
             v: 1.0,
         }));
     }
     if arc.len() < 3 {
-        // and a dimmer one
+        // and a dimmer one: deep for vivid colours, only slightly dimmer for pastels
         let led_hsv = led.to_hsv();
-        arc.push(Rgb::from_hsv(Hsv { v: 0.45, ..led_hsv }));
+        let pastel = led_hsv.s < cfg.min_saturation as f32 * 0.9;
+        let v = if pastel { 0.7 } else { 0.45 };
+        arc.push(Rgb::from_hsv(Hsv { v, ..led_hsv }));
     }
 
     Ok(Extraction {
@@ -197,6 +219,16 @@ pub fn extract(img: &DynamicImage, cfg: &ExtractConfig) -> Result<Extraction, Ex
 fn hue_distance(a: f32, b: f32) -> f32 {
     let d = (a - b).rem_euclid(360.0);
     d.min(360.0 - d)
+}
+
+/// Saturation for the LEDs: dark colours raised to `min_saturation`, light ones kept pastel.
+fn led_saturation(hsv: Hsv, cfg: &ExtractConfig) -> f32 {
+    let floor = cfg.min_saturation as f32;
+    let dark = hsv.s.max(floor);
+    let light = (hsv.s * cfg.pastel_gain as f32).clamp(hsv.s, floor.max(hsv.s));
+    let t = ((hsv.v - 0.55) / (0.8 - 0.55)).clamp(0.0, 1.0);
+    let t = t * t * (3.0 - 2.0 * t); // smoothstep
+    dark + (light - dark) * t
 }
 
 fn vividness(hsv: Hsv, share: f32, cfg: &ExtractConfig) -> f32 {
@@ -386,6 +418,53 @@ mod tests {
         )
         .unwrap();
         assert_ne!(e.led, Rgb::WHITE);
+    }
+
+    #[test]
+    fn light_pastel_stays_pastel() {
+        // pale peach (12 % saturation, bright): soft peach, not orange
+        let e = extract(
+            &image_from(|_, _| [226, 207, 200]),
+            &ExtractConfig::default(),
+        )
+        .unwrap();
+        let hsv = e.led.to_hsv();
+        assert!(
+            (0.25..0.4).contains(&hsv.s),
+            "pastel kept: {} (s {})",
+            e.led,
+            hsv.s
+        );
+        assert!(
+            e.arc.iter().all(|c| c.to_hsv().v >= 0.69),
+            "no deep shade: {:?}",
+            e.arc
+        );
+    }
+
+    #[test]
+    fn dark_muted_colour_is_still_boosted() {
+        // shaded rose (pink hair in shadow): raised to the saturation floor
+        let e = extract(&image_from(|_, _| [95, 53, 54]), &ExtractConfig::default()).unwrap();
+        let min = ExtractConfig::default().min_saturation as f32;
+        assert!(e.led.to_hsv().s >= min - 0.01, "{}", e.led);
+    }
+
+    #[test]
+    fn small_purple_accent_beats_large_dull_background() {
+        let img = image_from(|x, _| match x {
+            0..60 => [61, 63, 79],      // dull slate, 30 %
+            60..100 => [88, 124, 100],  // green
+            100..120 => [175, 96, 100], // red (main)
+            120..122 => [206, 86, 218], // purple sparkle, 1 %
+            _ => [34, 37, 39],
+        });
+        let e = extract(&img, &ExtractConfig::default()).unwrap();
+        assert!(
+            e.arc.iter().any(|c| (270.0..310.0).contains(&c.to_hsv().h)),
+            "purple kept: {:?}",
+            e.arc
+        );
     }
 
     #[test]
