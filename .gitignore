@@ -1,6 +1,6 @@
 /target
-openlinkhub/src/
-openlinkhub/pkg/
-openlinkhub/openlinkhub/
-openlinkhub/*.pkg.tar.*
-openlinkhub/*.log
+upstream/*/src/
+upstream/*/pkg/
+upstream/*/openlinkhub/
+upstream/*/*.pkg.tar.*
+__pycache__/
