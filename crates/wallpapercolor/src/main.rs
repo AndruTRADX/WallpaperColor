@@ -7,6 +7,20 @@ use std::process::ExitCode;
 use wpc_core::{Config, Rgb, extract_path};
 use wpc_openrgb::Client;
 
+/// `println!` that exits quietly when the reader went away (`wallpapercolor ... | head`)
+/// instead of panicking on a broken pipe.
+macro_rules! out {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        if let Err(e) = writeln!(std::io::stdout().lock(), $($arg)*) {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                std::process::exit(0);
+            }
+            panic!("cannot write to stdout: {e}");
+        }
+    }};
+}
+
 #[derive(Parser)]
 #[command(version, about = "Paint your RGB hardware with the wallpaper colour")]
 struct Cli {
@@ -72,11 +86,11 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             for path in &images {
                 match extract_path(path, &config.extract) {
                     Ok(e) => {
-                        println!("{}{}  {}", swatch(e.led, 6), e.led, path.display());
+                        out!("{}{}  {}", swatch(e.led, 6), e.led, path.display());
                         if palette {
                             for (c, share) in &e.palette {
                                 let mark = if Some(*c) == e.picked { "←" } else { "" };
-                                println!("    {}{c} {:5.1}% {mark}", swatch(*c, 2), share * 100.0);
+                                out!("    {}{c} {:5.1}% {mark}", swatch(*c, 2), share * 100.0);
                             }
                         }
                     }
@@ -95,20 +109,20 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
         Command::Devices => {
             let mut client = connect(&config)?;
             let ctrls = client.controllers()?;
-            println!(
+            out!(
                 "{} (protocol {}): {} device(s)",
                 config.openrgb.address,
                 client.protocol(),
                 ctrls.len()
             );
             if ctrls.is_empty() {
-                println!(
+                out!(
                     "  none exposed: in OpenLinkHub, turn on \"OpenRGB Integration\" for a device"
                 );
             }
             for c in &ctrls {
                 let now = c.colors.first().copied().unwrap_or_default();
-                println!(
+                out!(
                     "  [{}] {}{}  {} LEDs  now {now}",
                     c.index,
                     swatch(now, 2),
@@ -116,7 +130,7 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
                     c.led_count()
                 );
                 for z in &c.zones {
-                    println!("        {}: {} LEDs", z.name, z.leds);
+                    out!("        {}: {} LEDs", z.name, z.leds);
                 }
             }
             Ok(ExitCode::SUCCESS)
@@ -136,12 +150,12 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             }
             for c in &ctrls {
                 client.set_all(c, color)?;
-                println!("{}{color} → [{}] {}", swatch(color, 2), c.index, c.name);
+                out!("{}{color} → [{}] {}", swatch(color, 2), c.index, c.name);
             }
             Ok(ExitCode::SUCCESS)
         }
         Command::Config => {
-            print!("{}", config.to_toml());
+            out!("{}", config.to_toml().trim_end());
             Ok(ExitCode::SUCCESS)
         }
     }

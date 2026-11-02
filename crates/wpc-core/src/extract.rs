@@ -4,13 +4,17 @@
 //! 2. Reduce it to a small palette by repeatedly cutting the colour box with the widest range
 //!    at the middle of that range (not at the median pixel: in a mostly-black picture that only
 //!    slices the black into identical pieces and averages small vivid areas away).
-//! 3. Ignore near-grey entries (chroma below `min_chroma`). Chroma, the gap between the highest
+//! 3. Ignore specks (entries covering less than `min_share` of the picture) and near-grey
+//!    entries (chroma below `min_chroma`). Chroma, the gap between the highest
 //!    and lowest channel, is used instead of saturation because saturation blows up on very dark
 //!    colours: an almost-black `#1b191e` has 17 % saturation but only 2 % chroma.
 //! 4. Pick the most *vivid* remaining entry: `share × saturation² × (0.3 + value)`, so a bright
-//!    character on a grey background wins over the background.
+//!    character on a grey background wins over the background. Skin tones (soft orange, shadows
+//!    included) count only `skin_weight` as much, and pale skin counts as grey: character art
+//!    is full of skin, which is rarely its colour.
 //! 5. Push it to full brightness and at least `min_saturation`: LEDs make pastel shades look
-//!    washed out. A picture with no real colour (black and white) gives white.
+//!    washed out, but too high a floor turns pinks into red and beige into orange.
+//!    A picture with no real colour (black and white) gives white.
 
 use crate::color::{Hsv, Rgb};
 use image::{DynamicImage, imageops::FilterType};
@@ -25,10 +29,14 @@ pub struct ExtractConfig {
     /// The picture is downscaled to this many pixels per side before analysis.
     pub sample_size: u32,
     /// Saturation the LED colour is raised to (0–1).
-    pub min_saturation: f32,
+    pub min_saturation: f64,
     /// Palette entries with less chroma than this (max − min channel, 0–1) count as grey.
     /// When every entry is grey the picture is colourless and the LEDs go white.
-    pub min_chroma: f32,
+    pub min_chroma: f64,
+    /// Palette entries covering less of the picture than this (0–1) are ignored as specks.
+    pub min_share: f64,
+    /// How much a skin tone counts when picking the colour (1 = like any other colour, 0 = never).
+    pub skin_weight: f64,
 }
 
 impl Default for ExtractConfig {
@@ -36,8 +44,10 @@ impl Default for ExtractConfig {
         Self {
             palette_size: 10,
             sample_size: 96,
-            min_saturation: 0.8,
-            min_chroma: 0.08,
+            min_saturation: 0.7,
+            min_chroma: 0.06,
+            min_share: 0.01,
+            skin_weight: 0.15,
         }
     }
 }
@@ -106,13 +116,16 @@ pub fn extract(img: &DynamicImage, cfg: &ExtractConfig) -> Result<Extraction, Ex
     let best = palette
         .iter()
         .map(|&(c, share)| (c, c.to_hsv(), share))
-        .filter(|(_, hsv, _)| hsv.s * hsv.v >= cfg.min_chroma)
-        .max_by(|a, b| vividness(a.1, a.2).total_cmp(&vividness(b.1, b.2)));
+        .filter(|&(_, hsv, share)| {
+            share >= cfg.min_share as f32 && hsv.s * hsv.v >= cfg.min_chroma as f32
+        })
+        .filter(|&(_, hsv, _)| !is_skin(hsv) || hsv.s * hsv.v >= PALE_SKIN_CHROMA)
+        .max_by(|a, b| vividness(a.1, a.2, cfg).total_cmp(&vividness(b.1, b.2, cfg)));
 
     let led = match best {
         Some((_, hsv, _)) => Rgb::from_hsv(Hsv {
             h: hsv.h,
-            s: hsv.s.max(cfg.min_saturation),
+            s: hsv.s.max(cfg.min_saturation as f32),
             v: 1.0,
         }),
         None => Rgb::WHITE,
@@ -124,8 +137,21 @@ pub fn extract(img: &DynamicImage, cfg: &ExtractConfig) -> Result<Extraction, Ex
     })
 }
 
-fn vividness(hsv: Hsv, share: f32) -> f32 {
-    share * hsv.s * hsv.s * (0.3 + hsv.v)
+fn vividness(hsv: Hsv, share: f32, cfg: &ExtractConfig) -> f32 {
+    let score = share * hsv.s * hsv.s * (0.3 + hsv.v);
+    if is_skin(hsv) {
+        score * cfg.skin_weight as f32
+    } else {
+        score
+    }
+}
+
+/// Skin with less chroma than this (beige, greyish peach) is treated as grey.
+const PALE_SKIN_CHROMA: f32 = 0.15;
+
+/// Soft orange, light or in shadow: where anime and photo skin falls (vivid orange is not skin).
+fn is_skin(hsv: Hsv) -> bool {
+    (5.0..=45.0).contains(&hsv.h) && (0.12..=0.6).contains(&hsv.s) && hsv.v >= 0.2
 }
 
 /// Range cut: split the box with the widest channel range at the middle of that range until
@@ -206,12 +232,13 @@ mod tests {
 
     #[test]
     fn pastel_is_saturated() {
-        let e = extract(
-            &image_from(|_, _| [180, 200, 255]),
-            &ExtractConfig::default(),
-        )
-        .unwrap();
-        assert!(e.led.to_hsv().s >= 0.79, "{}", e.led);
+        let cfg = ExtractConfig::default();
+        let e = extract(&image_from(|_, _| [180, 200, 255]), &cfg).unwrap();
+        assert!(
+            e.led.to_hsv().s >= cfg.min_saturation as f32 - 0.01,
+            "{}",
+            e.led
+        );
     }
 
     #[test]
@@ -222,6 +249,81 @@ mod tests {
         )
         .unwrap();
         assert_eq!(e.led, Rgb::WHITE);
+    }
+
+    #[test]
+    fn specks_are_ignored() {
+        // grey picture with a 0.16 % orange speck: white, not orange
+        let img = image_from(|x, y| {
+            if x < 4 && y < 8 {
+                [200, 120, 60]
+            } else {
+                [90, 90, 92]
+            }
+        });
+        assert_eq!(
+            extract(&img, &ExtractConfig::default()).unwrap().led,
+            Rgb::WHITE
+        );
+    }
+
+    #[test]
+    fn pale_skin_on_grey_gives_white() {
+        let img = image_from(|x, _| {
+            if x < 30 {
+                [153, 139, 127]
+            } else {
+                [33, 40, 39]
+            }
+        });
+        assert_eq!(
+            extract(&img, &ExtractConfig::default()).unwrap().led,
+            Rgb::WHITE
+        );
+    }
+
+    #[test]
+    fn navy_background_beats_pink_hair() {
+        let img = image_from(|x, _| match x {
+            0..60 => [64, 64, 82],
+            60..75 => [138, 98, 101],
+            _ => [21, 21, 30],
+        });
+        let hsv = extract(&img, &ExtractConfig::default())
+            .unwrap()
+            .led
+            .to_hsv();
+        assert!(
+            (220.0..260.0).contains(&hsv.h),
+            "navy/blue expected, got hue {}",
+            hsv.h
+        );
+    }
+
+    #[test]
+    fn skin_loses_to_a_smaller_real_colour() {
+        // 60 % skin, 15 % blue hair, rest dark: blue
+        let img = image_from(|x, _| match x {
+            0..120 => [230, 190, 160],
+            120..150 => [60, 90, 200],
+            _ => [30, 30, 35],
+        });
+        let e = extract(&img, &ExtractConfig::default()).unwrap();
+        assert!(
+            (215.0..240.0).contains(&e.led.to_hsv().h),
+            "blue expected, got {}",
+            e.led
+        );
+    }
+
+    #[test]
+    fn skin_only_picture_still_gets_a_colour() {
+        let e = extract(
+            &image_from(|_, _| [230, 190, 160]),
+            &ExtractConfig::default(),
+        )
+        .unwrap();
+        assert_ne!(e.led, Rgb::WHITE);
     }
 
     #[test]
