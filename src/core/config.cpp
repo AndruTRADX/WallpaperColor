@@ -189,7 +189,7 @@ void read_openrgb(const toml::table& t, OpenRgbConfig& o) {
 }
 
 void read_motherboard(const toml::table& t, MotherboardConfig& m) {
-    check_keys(t, {"enabled", "argb_order", "argb_leds"});
+    check_keys(t, {"enabled", "argb_order", "argb_header1", "argb_header2"});
     if (const toml::node* n = t.get("enabled")) m.enabled = read_bool(*n);
     if (const toml::node* n = t.get("argb_order")) {
         std::string order = read_string(*n);
@@ -198,11 +198,13 @@ void read_motherboard(const toml::table& t, MotherboardConfig& m) {
         if (sorted != "BGR") fail_at(n->source(), std::format("invalid value `{}`, expected R, G and B in some order, like \"GRB\"", order));
         m.argb_order = order;
     }
-    if (const toml::node* n = t.get("argb_leds")) {
-        if (!n->is_array() || n->as_array()->size() != 2) {
-            fail_at(n->source(), "invalid type: expected two numbers, like [8, 8]");
+    for (int h = 0; h < 2; ++h) {
+        const toml::node* n = t.get(h == 0 ? "argb_header1" : "argb_header2");
+        if (!n) continue;
+        if (!n->is_array()) fail_at(n->source(), "invalid type: expected the LEDs of each fan, like [8, 8]");
+        for (const toml::node& leds : *n->as_array()) {
+            m.argb_headers[h].push_back(static_cast<uint32_t>(read_unsigned(leds, 1024, "a number of LEDs (0-1024)")));
         }
-        for (int i = 0; i < 2; ++i) m.argb_leds[i] = static_cast<uint32_t>(read_unsigned((*n->as_array())[i], 1024, "0-1024"));
     }
 }
 
@@ -315,7 +317,11 @@ std::string Config::to_toml() const {
     out += "\n[motherboard]\n";
     out += std::format("enabled = {}\n", motherboard.enabled);
     out += std::format("argb_order = {}\n", toml_string(motherboard.argb_order));
-    out += std::format("argb_leds = [{}, {}]\n", motherboard.argb_leds[0], motherboard.argb_leds[1]);
+    for (int h = 0; h < 2; ++h) {
+        std::string leds;
+        for (uint32_t n : motherboard.argb_headers[h]) leds += (leds.empty() ? "" : ", ") + std::to_string(n);
+        out += std::format("argb_header{} = [{}]\n", h + 1, leds);
+    }
     for (const Calibration& c : calibration) {
         out += "\n[[calibration]]\n";
         out += std::format("device = {}\n", toml_string(c.device));

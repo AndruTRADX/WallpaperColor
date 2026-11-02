@@ -33,7 +33,9 @@ namespace wpc::fusion2 {
 /// How the board appears in `devices`, the status and the terminal UI.
 inline constexpr const char* DEVICE_NAME = "Motherboard";
 inline constexpr const char* ONBOARD_ZONE = "Onboard";
+/// A header whose fans are unknown is one zone; a known fan is a zone of its own.
 inline constexpr const char* HEADER_ZONE = "ARGB header";
+inline constexpr const char* FAN_ZONE = "ARGB fan";
 /// OpenRGB's device type for motherboards.
 inline constexpr int32_t DEVICE_TYPE = 0;
 /// ARGB headers on the board.
@@ -49,9 +51,14 @@ public:
     const std::string& product() const { return product_; }
     const std::filesystem::path& path() const { return path_; }
 
-    /// How many colours to give header `header` (0 or 1): its LEDs from the config, or 1 when
-    /// the count is unknown (that colour then goes to every LED the header can drive).
-    uint32_t header_colours(int header) const;
+    /// One zone of what is on ARGB header `header` (0 or 1).
+    struct Zone {
+        const char* name;
+        uint32_t leds;
+    };
+    /// The zones on header `header`: each fan of the config, or one zone of one colour when
+    /// its fans are unknown (that colour then goes to every LED the header can drive).
+    std::vector<Zone> header_zones(int header) const;
 
     /// Shows `colour` on every single-colour zone. Throws wpc::Error.
     void set_onboard(Rgb colour);
@@ -73,7 +80,9 @@ private:
     std::string product_;
     /// Where red, green and blue go in each LED's three bytes, e.g. {1, 0, 2} for "GRB".
     std::array<int, 3> order_;
-    std::array<uint32_t, HEADERS> header_leds_;
+    std::array<std::vector<uint32_t>, HEADERS> header_fans_;
+    /// LEDs on each header (the sum of its fans).
+    uint32_t header_leds(int header) const;
 };
 
 }  // namespace wpc::fusion2

@@ -46,4 +46,7 @@ address = "127.0.0.1:6743"
 
 [motherboard]
 enabled = true      # paint the motherboard's RGB too (Gigabyte RGB Fusion 2)
+argb_order = "GRB"  # colour order of what is on its ARGB headers
+argb_header1 = [8, 8]   # LEDs of each fan chained on ARGB header 1 (empty: one colour)
+argb_header2 = []
 ```

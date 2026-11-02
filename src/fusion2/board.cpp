@@ -69,7 +69,7 @@ std::optional<fs::path> find_device() {
 }  // namespace
 
 Board::Board(Fd fd, fs::path path, const MotherboardConfig& config)
-    : fd_(std::move(fd)), path_(std::move(path)), header_leds_{config.argb_leds[0], config.argb_leds[1]} {
+    : fd_(std::move(fd)), path_(std::move(path)), header_fans_(config.argb_headers) {
     for (int i = 0; i < 3; ++i) {
         // order_ = where red, green and blue go: for "GRB", green is byte 0, red byte 1.
         order_[std::string_view("RGB").find(config.argb_order[i])] = i;
@@ -103,21 +103,30 @@ std::optional<Board> Board::open(const MotherboardConfig& config) {
 
     // Drive both ARGB headers LED by LED; tell the chip their length if over the default.
     board.command(HEADER_EFFECTS_OFF, 0x03);
-    if (board.header_leds_[0] > DEFAULT_HEADER_LEDS || board.header_leds_[1] > DEFAULT_HEADER_LEDS) {
+    if (board.header_leds(0) > DEFAULT_HEADER_LEDS || board.header_leds(1) > DEFAULT_HEADER_LEDS) {
         board.command(HEADER_LENGTHS,
-                      static_cast<uint8_t>(length_code(board.header_leds_[1]) << 4 | length_code(board.header_leds_[0])));
+                      static_cast<uint8_t>(length_code(board.header_leds(1)) << 4 | length_code(board.header_leds(0))));
     }
     return board;
 }
 
-uint32_t Board::header_colours(int header) const {
-    return header_leds_[header] > 0 ? header_leds_[header] : 1;
+uint32_t Board::header_leds(int header) const {
+    uint32_t sum = 0;
+    for (uint32_t leds : header_fans_[header]) sum += leds;
+    return sum;
+}
+
+std::vector<Board::Zone> Board::header_zones(int header) const {
+    if (header_fans_[header].empty()) return {Zone{HEADER_ZONE, 1}};
+    std::vector<Zone> zones;
+    for (uint32_t leds : header_fans_[header]) zones.push_back(Zone{FAN_ZONE, leds});
+    return zones;
 }
 
 void Board::set_header(int header, const std::vector<Rgb>& colours) {
     // An unknown count: the one colour on every LED the header can drive.
     std::vector<Rgb> leds = colours;
-    if (header_leds_[header] == 0 && !colours.empty()) leds.assign(DEFAULT_HEADER_LEDS, colours[0]);
+    if (header_fans_[header].empty() && !colours.empty()) leds.assign(DEFAULT_HEADER_LEDS, colours[0]);
 
     // Reports of up to 19 LEDs: command, byte offset (2 bytes), byte count, then the colours.
     for (size_t first = 0; first < leds.size(); first += LEDS_PER_REPORT) {

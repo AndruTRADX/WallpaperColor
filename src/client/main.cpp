@@ -200,7 +200,12 @@ int run_set(const Config& config, const SetArgs& args) {
     if (board) {
         board->set_onboard(painter.zone(fusion2::DEVICE_NAME, fusion2::ONBOARD_ZONE, 1, false)[0]);
         for (int h = 0; h < fusion2::HEADERS; ++h) {
-            board->set_header(h, painter.zone(fusion2::DEVICE_NAME, fusion2::HEADER_ZONE, board->header_colours(h), true));
+            std::vector<Rgb> colours;  // every fan on the header, one after the other
+            for (const fusion2::Board::Zone& z : board->header_zones(h)) {
+                std::vector<Rgb> fan = painter.zone(fusion2::DEVICE_NAME, z.name, z.leds, true);
+                colours.insert(colours.end(), fan.begin(), fan.end());
+            }
+            board->set_header(h, colours);
         }
         out(std::format("{} → {}", join(label, " "), fusion2::DEVICE_NAME));
     }

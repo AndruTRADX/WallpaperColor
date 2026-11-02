@@ -473,11 +473,14 @@ std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops) {
         outputs.push_back(Output{"motherboard", painter.zone(fusion2::DEVICE_NAME, fusion2::ONBOARD_ZONE, 1, false),
                                  {}, [&board](const std::vector<Rgb>& frame) { board->set_onboard(frame[0]); }});
         for (int h = 0; h < fusion2::HEADERS; ++h) {
-            uint32_t leds = board->header_colours(h);
-            outputs.push_back(Output{std::format("motherboard header {}", h),
-                                     painter.zone(fusion2::DEVICE_NAME, fusion2::HEADER_ZONE, leds, true), {},
+            std::vector<Rgb> colours;  // every fan on the header, one after the other
+            for (const fusion2::Board::Zone& z : board->header_zones(h)) {
+                std::vector<Rgb> fan = painter.zone(fusion2::DEVICE_NAME, z.name, z.leds, true);
+                colours.insert(colours.end(), fan.begin(), fan.end());
+                d.zones.push_back(ipc::ZoneInfo{z.name, z.leds});
+            }
+            outputs.push_back(Output{std::format("motherboard header {}", h), colours, {},
                                      [&board, h](const std::vector<Rgb>& frame) { board->set_header(h, frame); }});
-            d.zones.push_back(ipc::ZoneInfo{fusion2::HEADER_ZONE, leds});
         }
         devices.push_back(std::move(d));
     }

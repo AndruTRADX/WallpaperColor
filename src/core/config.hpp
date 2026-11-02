@@ -53,8 +53,9 @@ struct MotherboardConfig {
     bool enabled = true;
     /// The colour order of what is plugged into the ARGB headers ("GRB" for most fans).
     std::string argb_order = "GRB";
-    /// LEDs on ARGB header 1 and 2; 0 = unknown: the whole header gets one colour.
-    std::array<uint32_t, 2> argb_leds = {0, 0};
+    /// What is chained on ARGB header 1 and 2: the LEDs of each fan or strip, in order
+    /// ([8, 8] = two fans of 8 LEDs). Empty = unknown: the whole header gets one colour.
+    std::array<std::vector<uint32_t>, 2> argb_headers;
     bool operator==(const MotherboardConfig&) const = default;
 };
 
