@@ -19,6 +19,7 @@
 #include "core/config.hpp"
 #include "core/extract.hpp"
 #include "core/ipc.hpp"
+#include "fusion2/board.hpp"
 #include "openrgb/client.hpp"
 #include "util/error.hpp"
 
@@ -145,6 +146,18 @@ int run_devices(const Config& config) {
         out(std::format("  [{}] {}{}  {} LEDs  now {}", c.index, swatch(now, 2), c.name, c.led_count(), now.hex()));
         for (const openrgb::Zone& z : c.zones) out(std::format("        {}: {} LEDs", z.name, z.leds));
     }
+
+    if (!config.motherboard.enabled) {
+        out("motherboard RGB: off in the config");
+        return EXIT_SUCCESS;
+    }
+    try {
+        std::optional<fusion2::Board> board = fusion2::Board::open();
+        out(board ? std::format("motherboard RGB: {} ({})", board->product(), board->path().string())
+                  : std::string("motherboard RGB: none found"));
+    } catch (const Error& e) {
+        out(std::string("motherboard RGB: ") + e.what());
+    }
     return EXIT_SUCCESS;
 }
 
@@ -172,7 +185,9 @@ int run_set(const Config& config, const SetArgs& args) {
 
     openrgb::Client client = connect(config);
     std::vector<openrgb::Controller> controllers = client.controllers();
-    if (controllers.empty()) {
+    std::optional<fusion2::Board> board;
+    if (config.motherboard.enabled) board = fusion2::Board::open();
+    if (controllers.empty() && !board) {
         throw Error("no devices exposed: turn on \"OpenRGB Integration\" in OpenLinkHub");
     }
     Painter painter(stops, mode, config);
@@ -181,6 +196,10 @@ int run_set(const Config& config, const SetArgs& args) {
     for (const openrgb::Controller& c : controllers) {
         client.set_leds(c.index, c.paint(painter));
         out(std::format("{} → [{}] {}", join(label, " "), c.index, c.name));
+    }
+    if (board) {
+        board->set_colour(painter.zone(fusion2::DEVICE_NAME, fusion2::ZONE_NAME, 1, false)[0]);
+        out(std::format("{} → {}", join(label, " "), fusion2::DEVICE_NAME));
     }
     return EXIT_SUCCESS;
 }

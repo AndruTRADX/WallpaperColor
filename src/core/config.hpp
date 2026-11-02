@@ -47,10 +47,18 @@ struct Calibration {
     bool operator==(const Calibration&) const = default;
 };
 
+/// The `[motherboard]` table: the board's own RGB (Gigabyte RGB Fusion 2).
+struct MotherboardConfig {
+    /// Paint it too, when there is one and we may use it.
+    bool enabled = true;
+    bool operator==(const MotherboardConfig&) const = default;
+};
+
 struct Config {
     LedConfig led;
     ExtractConfig extract;
     OpenRgbConfig openrgb;
+    MotherboardConfig motherboard;
     /// Colour correction for LEDs that render colours off (e.g. weak blue: white looks yellow).
     std::vector<Calibration> calibration;
 

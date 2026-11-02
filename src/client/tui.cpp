@@ -69,7 +69,7 @@ const NumberSetting NUMBERS[] = {
 
 /// One line of the settings list.
 struct Item {
-    enum class Kind { Mode, Number, Gain, AddCalibration };
+    enum class Kind { Mode, Motherboard, Number, Gain, AddCalibration };
     Kind kind;
     size_t index = 0;  // NUMBERS entry (Number) or calibration entry (Gain)
     int channel = 0;   // 0 red, 1 green, 2 blue (Gain)
@@ -218,7 +218,7 @@ const std::vector<ipc::DeviceInfo>& App::devices() const {
 }
 
 std::vector<Item> App::items() const {
-    std::vector<Item> items = {{Item::Kind::Mode}};
+    std::vector<Item> items = {{Item::Kind::Mode}, {Item::Kind::Motherboard}};
     for (size_t i = 0; i < std::size(NUMBERS); ++i) items.push_back({Item::Kind::Number, i});
     for (size_t i = 0; i < config_.calibration.size(); ++i) {
         for (int ch = 0; ch < 3; ++ch) items.push_back({Item::Kind::Gain, i, ch});
@@ -291,6 +291,9 @@ void App::adjust(const Item& item, int direction) {
             saved(settings_.set_mode(static_cast<Mode>(next)), "saved");
             break;
         }
+        case Item::Kind::Motherboard:
+            saved(settings_.set_motherboard(!config_.motherboard.enabled), "saved");
+            break;
         case Item::Kind::Number: {
             const NumberSetting& n = NUMBERS[item.index];
             double v = std::clamp(n.get(config_) + n.step * direction, n.min, n.max);
@@ -481,6 +484,11 @@ ui::Element App::draw_item(const Item& item, bool selected) {
         case Item::Kind::Mode:
             label = "Mode";
             value = ui::text(std::string(mode_description(config_.led.mode)));
+            break;
+        case Item::Kind::Motherboard:
+            label = "Motherboard";
+            value = ui::text(config_.motherboard.enabled ? "‹ on ›" : "‹ off ›");
+            hint = "paint the motherboard's own RGB too";
             break;
         case Item::Kind::Number: {
             const NumberSetting& n = NUMBERS[item.index];

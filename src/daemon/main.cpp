@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <map>
 
 #include <malloc.h>
@@ -32,6 +33,7 @@
 #include "core/extract.hpp"
 #include "core/ipc.hpp"
 #include "core/paint.hpp"
+#include "fusion2/board.hpp"
 #include "kde/plasma.hpp"
 #include "openrgb/client.hpp"
 #include "util/channel.hpp"
@@ -83,6 +85,18 @@ struct Todo {
     bool reload = false;
     /// Send even if nothing changed.
     bool force = false;
+};
+
+/// Something the colours go to: one OpenRGB device, or the motherboard.
+struct Output {
+    /// Name under which fades remember what it shows.
+    std::string key;
+    /// Its new colours, one per LED.
+    std::vector<Rgb> target;
+    /// What it says it shows now (empty if it cannot tell).
+    std::vector<Rgb> reported;
+    /// Sends it one frame.
+    std::function<void(const std::vector<Rgb>&)> show;
 };
 
 /// A pending retry: when, and how long the last wait was (it doubles each time).
@@ -203,8 +217,7 @@ private:
     ipc::Status status() const;
     void sync(bool force);
     std::vector<ipc::DeviceInfo> send(const std::vector<Rgb>& stops);
-    void fade(openrgb::Client& client, const std::vector<openrgb::Controller>& controllers,
-              const std::vector<std::vector<Rgb>>& targets);
+    void fade(const std::vector<Output>& outputs);
     void fail(const std::string& message);
     void watch_slides(const std::vector<fs::path>& dirs);
     bool watching_config_dir(const fs::path& dir) const;
@@ -223,6 +236,8 @@ private:
     std::optional<Retry> retry_;
     /// What each device shows now (what we sent last), by "index name": where fades start.
     std::map<std::string, std::vector<Rgb>> shown_;
+    /// Whether we already logged that the motherboard RGB cannot be used.
+    bool board_warned_ = false;
     bool paused_ = false;
     /// What clients see.
     ipc::Status status_;
@@ -428,39 +443,56 @@ void Daemon::sync(bool force) {
 }
 
 std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops) {
-    openrgb::Client client = openrgb::Client::connect(config_.openrgb.address, config_.openrgb.client_name);
-    std::vector<openrgb::Controller> controllers = client.controllers();
     Painter painter(stops, config_.led.mode, config_);
-    std::vector<std::vector<Rgb>> targets;
-    for (const openrgb::Controller& c : controllers) targets.push_back(c.paint(painter));
-    fade(client, controllers, targets);
-
+    std::vector<Output> outputs;
     std::vector<ipc::DeviceInfo> devices;
-    for (const openrgb::Controller& c : controllers) {
+
+    // The devices of the OpenRGB server (OpenLinkHub).
+    openrgb::Client client = openrgb::Client::connect(config_.openrgb.address, config_.openrgb.client_name);
+    for (const openrgb::Controller& c : client.controllers()) {
+        uint32_t index = c.index;
+        outputs.push_back(Output{std::format("openrgb {} {}", c.index, c.name), c.paint(painter), c.colors,
+                                 [&client, index](const std::vector<Rgb>& frame) { client.set_leds(index, frame); }});
         ipc::DeviceInfo d{c.name, c.kind, {}};
         for (const openrgb::Zone& z : c.zones) d.zones.push_back(ipc::ZoneInfo{z.name, z.leds});
         devices.push_back(std::move(d));
     }
+
+    // The motherboard's own RGB, if there is one we can use.
+    std::optional<fusion2::Board> board;
+    if (config_.motherboard.enabled) {
+        try {
+            board = fusion2::Board::open();
+        } catch (const Error& e) {
+            if (!board_warned_) log("{}; painting the other devices", e.what());
+            board_warned_ = true;
+        }
+    }
+    if (board) {
+        outputs.push_back(Output{"motherboard", painter.zone(fusion2::DEVICE_NAME, fusion2::ZONE_NAME, 1, false), {},
+                                 [&board](const std::vector<Rgb>& frame) { board->set_colour(frame[0]); }});
+        devices.push_back(ipc::DeviceInfo{fusion2::DEVICE_NAME, fusion2::DEVICE_TYPE, {{fusion2::ZONE_NAME, 1}}});
+    }
+
+    fade(outputs);
     return devices;
 }
 
-/// Moves every device from what it shows to `targets` over `[led] fade` seconds.
-void Daemon::fade(openrgb::Client& client, const std::vector<openrgb::Controller>& controllers,
-                  const std::vector<std::vector<Rgb>>& targets) {
-    // Where each device starts: what we sent it last, else what it reports showing.
+/// Moves every output from what it shows to its target over `[led] fade` seconds.
+void Daemon::fade(const std::vector<Output>& outputs) {
+    // Where each one starts: what we sent it last, else what it reports showing.
     std::vector<std::vector<Rgb>> from;
     bool changes = false;
-    for (size_t i = 0; i < controllers.size(); ++i) {
-        const openrgb::Controller& c = controllers[i];
-        auto last = shown_.find(std::format("{} {}", c.index, c.name));
-        if (last != shown_.end() && last->second.size() == targets[i].size()) {
+    for (const Output& o : outputs) {
+        auto last = shown_.find(o.key);
+        if (last != shown_.end() && last->second.size() == o.target.size()) {
             from.push_back(last->second);
-        } else if (c.colors.size() == targets[i].size()) {
-            from.push_back(c.colors);
+        } else if (o.reported.size() == o.target.size()) {
+            from.push_back(o.reported);
         } else {
-            from.push_back(targets[i]);  // unknown: no fade for this one
+            from.push_back(o.target);  // unknown: no fade for this one
         }
-        changes = changes || from[i] != targets[i];
+        changes = changes || from.back() != o.target;
     }
 
     double seconds = std::clamp(config_.led.fade, 0.0, FADE_MAX_SECONDS);
@@ -469,18 +501,17 @@ void Daemon::fade(openrgb::Client& client, const std::vector<openrgb::Controller
     for (int f = 1; f <= frames; ++f) {
         float t = static_cast<float>(f) / static_cast<float>(frames);
         t = t * t * (3.0f - 2.0f * t);  // ease in and out
-        for (size_t i = 0; i < controllers.size(); ++i) {
-            std::vector<Rgb> frame(targets[i].size());
+        for (size_t i = 0; i < outputs.size(); ++i) {
+            const std::vector<Rgb>& target = outputs[i].target;
+            std::vector<Rgb> frame(target.size());
             for (size_t led = 0; led < frame.size(); ++led) {
-                frame[led] = (f == frames) ? targets[i][led] : mix(from[i][led], targets[i][led], t);
+                frame[led] = (f == frames) ? target[led] : mix(from[i][led], target[led], t);
             }
-            client.set_leds(controllers[i].index, frame);
+            outputs[i].show(frame);
         }
         if (f < frames) std::this_thread::sleep_until(start + f * std::chrono::milliseconds(1000 / FADE_FPS));
     }
-    for (size_t i = 0; i < controllers.size(); ++i) {
-        shown_[std::format("{} {}", controllers[i].index, controllers[i].name)] = targets[i];
-    }
+    for (const Output& o : outputs) shown_[o.key] = o.target;
 }
 
 /// Logs and schedules a retry with exponential backoff.

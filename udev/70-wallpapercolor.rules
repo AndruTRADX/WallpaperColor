@@ -1,0 +1,6 @@
+# Lets the person logged in use the motherboard's RGB controller (Gigabyte RGB Fusion 2,
+# ITE IT5702 / IT8297), so wallpapercolord can paint it without root.
+# Install: sudo install -Dm644 udev/70-wallpapercolor.rules /etc/udev/rules.d/70-wallpapercolor.rules
+#          sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=hidraw
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="5702", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="8297", TAG+="uaccess"

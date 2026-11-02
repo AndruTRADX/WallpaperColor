@@ -62,3 +62,11 @@ TEST_CASE("split mode and fade") {
     CHECK(Config{}.led.fade == 0.6);
     CHECK(Config::from_toml(c.to_toml()) == c);
 }
+
+TEST_CASE("motherboard can be turned off") {
+    CHECK(Config{}.motherboard.enabled);
+    Config c = Config::from_toml("[motherboard]\nenabled = false\n");
+    CHECK_FALSE(c.motherboard.enabled);
+    CHECK(Config::from_toml(c.to_toml()) == c);
+    CHECK_THROWS_AS(Config::from_toml("[motherboard]\nenabled = \"no\"\n"), Error);
+}

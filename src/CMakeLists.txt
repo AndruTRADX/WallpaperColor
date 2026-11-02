@@ -31,9 +31,13 @@ target_link_libraries(wpc_openrgb PUBLIC wpc_core)
 add_library(wpc_kde STATIC kde/plasma.cpp)
 target_link_libraries(wpc_kde PUBLIC wpc_core PRIVATE SDBusCpp::sdbus-c++)
 
+# Gigabyte RGB Fusion 2 motherboard RGB, through /dev/hidraw.
+add_library(wpc_fusion2 STATIC fusion2/board.cpp)
+target_link_libraries(wpc_fusion2 PUBLIC wpc_core)
+
 # The service. No terminal UI code here.
 add_executable(wallpapercolord daemon/main.cpp)
-target_link_libraries(wallpapercolord PRIVATE wpc_core wpc_openrgb wpc_kde)
+target_link_libraries(wallpapercolord PRIVATE wpc_core wpc_openrgb wpc_kde wpc_fusion2)
 
 # The terminal client.
 add_executable(wallpapercolor
@@ -41,5 +45,5 @@ add_executable(wallpapercolor
   client/settings.cpp
   client/tui.cpp
 )
-target_link_libraries(wallpapercolor PRIVATE wpc_core wpc_openrgb CLI11::CLI11
+target_link_libraries(wallpapercolor PRIVATE wpc_core wpc_openrgb wpc_fusion2 CLI11::CLI11
   ftxui::screen ftxui::dom ftxui::component)

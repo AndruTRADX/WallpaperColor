@@ -147,6 +147,11 @@ uint64_t read_unsigned(const toml::node& node, uint64_t max, std::string_view ty
     return static_cast<uint64_t>(v);
 }
 
+bool read_bool(const toml::node& node) {
+    if (!node.is_boolean()) fail_at(node.source(), "invalid type: expected true or false");
+    return node.as_boolean()->get();
+}
+
 Mode read_mode(const toml::node& node) {
     std::string name = read_string(node);
     if (name == "arc") return Mode::Arc;
@@ -183,6 +188,11 @@ void read_openrgb(const toml::table& t, OpenRgbConfig& o) {
     if (const toml::node* n = t.get("client_name")) o.client_name = read_string(*n);
 }
 
+void read_motherboard(const toml::table& t, MotherboardConfig& m) {
+    check_keys(t, {"enabled"});
+    if (const toml::node* n = t.get("enabled")) m.enabled = read_bool(*n);
+}
+
 Calibration read_calibration(const toml::table& t) {
     check_keys(t, {"device", "zone", "gain"});
     Calibration c;
@@ -213,10 +223,11 @@ Config Config::from_toml(std::string_view text) {
     }
 
     Config config;
-    check_keys(root, {"led", "extract", "openrgb", "calibration"});
+    check_keys(root, {"led", "extract", "openrgb", "motherboard", "calibration"});
     if (const toml::node* n = root.get("led")) read_led(as_table(*n), config.led);
     if (const toml::node* n = root.get("extract")) read_extract(as_table(*n), config.extract);
     if (const toml::node* n = root.get("openrgb")) read_openrgb(as_table(*n), config.openrgb);
+    if (const toml::node* n = root.get("motherboard")) read_motherboard(as_table(*n), config.motherboard);
     if (const toml::node* n = root.get("calibration")) {
         if (!n->is_array()) fail_at(n->source(), "invalid type: expected a sequence");
         for (const toml::node& entry : *n->as_array()) {
@@ -288,6 +299,8 @@ std::string Config::to_toml() const {
     out += "\n[openrgb]\n";
     out += std::format("address = {}\n", toml_string(openrgb.address));
     out += std::format("client_name = {}\n", toml_string(openrgb.client_name));
+    out += "\n[motherboard]\n";
+    out += std::format("enabled = {}\n", motherboard.enabled);
     for (const Calibration& c : calibration) {
         out += "\n[[calibration]]\n";
         out += std::format("device = {}\n", toml_string(c.device));

@@ -39,6 +39,8 @@ public:
 
     // Each setter returns false when the file's layout is one it does not edit (see above).
     bool set_mode(Mode mode);
+    /// `[motherboard] enabled`.
+    bool set_motherboard(bool enabled);
     /// `key = value` in `[table]`, the value rounded to `decimals` decimals.
     bool set_float(std::string_view table, std::string_view key, double value, int decimals);
     /// `key = value` in `[table]`, a whole number.

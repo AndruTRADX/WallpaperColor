@@ -24,6 +24,7 @@ service notices and reloads it.
    3. decode it, shrink it to 96×96, pick colours        (core/image.cpp, core/extract.cpp)
    4. decide every LED's colour (arc / single / split)   (core/paint.cpp, core/arc.cpp)
    5. fade to them on OpenLinkHub's OpenRGB SDK server   (daemon/main.cpp, openrgb/client.cpp)
+      and on the motherboard's RGB controller            (fusion2/board.cpp)
 ```
 
 Every event is only a **trigger**. The answer always comes from Plasma (step 1), so a false
@@ -48,6 +49,7 @@ OpenLinkHub or Plasma don't answer, the service retries after 2 s, 4 s, 8 s … 
 | Watching `plasma-org.kde.plasma.desktop-appletsrc` and `kdeglobals` | Changing the wallpaper in the settings doesn't always send a D-Bus signal. A light/dark switch can pick another picture of a wallpaper package. |
 | `malloc_trim(0)` after each picture | It gives the decoded picture's memory (tens of MB for 4K) back to the system. |
 | The format is read from the file's content | Many wallpapers are PNGs named `.jpg`. |
+| The motherboard is driven directly (`/dev/hidraw`), not through OpenRGB | OpenRGB would have to run all the time as a second background process. The protocol (from OpenRGB's source) is short for single-colour zones. `udev/70-wallpapercolor.rules` gives the logged-in user access. Nothing is saved to the board's flash. |
 
 How the colours are picked (palette, ignoring grey, specks and skin, pastels, the three
 "arc" colours) is explained step by step at the top of `src/core/extract.hpp`.
@@ -58,12 +60,14 @@ How the colours are picked (palette, ignoring grey, specks and skin, pastels, th
 src/
   core/     colours, gradients, painting, image decoding, colour extraction, config file, socket protocol
   openrgb/  OpenRGB SDK client (TCP, protocol version 4)
+  fusion2/  Gigabyte RGB Fusion 2 motherboard RGB (USB HID)
   kde/      Plasma over D-Bus, wallpaper packages, light/dark scheme
   util/     sockets, inotify, the thread-safe queue, UTF-8, errors, log
   daemon/   wallpapercolord: the main loop
   client/   wallpapercolor: commands (main.cpp), terminal UI (tui.cpp), config editor (settings.cpp)
 tests/      one test file per module (doctest)
 systemd/    the user unit installed by install.sh
+udev/       the rule that lets your user use the motherboard's RGB controller
 ```
 
 Every library is a CMake target (`src/CMakeLists.txt`): `wpc_core` doesn't know about OpenRGB
@@ -77,8 +81,9 @@ values that may be missing are `std::optional`. Colour maths uses `float`.
 - **Another desktop** (GNOME, Hyprland…): a new folder next to `kde/` with the same job:
   "which picture is on screen" and "tell me when it may have changed". Then use it in
   `daemon/main.cpp`.
-- **Other hardware** (the motherboard's ARGB through OpenRGB itself, port 6742): the same
-  OpenRGB client works. Point `[openrgb] address` at it, or add a second address.
+- **Other hardware**: a folder like `fusion2/` with a class that can show colours, added as
+  one more `Output` in `Daemon::send` (`daemon/main.cpp`). The motherboard's ARGB headers
+  (addressable strips) would need per-LED packets in `fusion2/board.cpp`.
 - **Another way to spread colours over the LEDs**: a new `Mode` and its case in
   `core/paint.cpp`. The service, `set` and the terminal UI's preview all paint through it.
 - **Another way to pick colours**: `core/extract.cpp`. `wallpapercolor extract -p picture` shows

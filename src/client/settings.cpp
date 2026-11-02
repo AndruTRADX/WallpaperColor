@@ -174,6 +174,10 @@ bool Settings::set_mode(Mode mode) {
     return set_value("led", "mode", toml_string(mode_name(mode)));
 }
 
+bool Settings::set_motherboard(bool enabled) {
+    return set_value("motherboard", "enabled", enabled ? "true" : "false");
+}
+
 bool Settings::set_float(std::string_view table, std::string_view key, double value, int decimals) {
     double scale = std::pow(10.0, decimals);
     return set_value(table, key, toml_float(std::round(value * scale) / scale));

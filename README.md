@@ -16,7 +16,10 @@ where everything is.
    (restart it), then turn on **OpenRGB Integration** for each device in the WebUI.
 2. `sudo pacman -S --needed cmake ninja stb tomlplusplus nlohmann-json cli11 sdbus-cpp doctest libwebp`
    (FTXUI is downloaded by CMake on the first build).
-3. `./install.sh`: builds, runs the tests, installs `~/.local/bin/wallpapercolor{,d}` and starts the
+3. For the motherboard's own RGB (Gigabyte RGB Fusion 2), let your user use it:
+   `sudo install -Dm644 udev/70-wallpapercolor.rules /etc/udev/rules.d/70-wallpapercolor.rules`
+   then `sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=hidraw`.
+4. `./install.sh`: builds, runs the tests, installs `~/.local/bin/wallpapercolor{,d}` and starts the
    `wallpapercolord` user service. Logs: `journalctl --user -u wallpapercolord -f`.
 
 ## Use
@@ -40,4 +43,7 @@ fade = 0.6          # seconds a colour change takes (0 = at once, at most 1.5)
 
 [openrgb]
 address = "127.0.0.1:6743"
+
+[motherboard]
+enabled = true      # paint the motherboard's RGB too (Gigabyte RGB Fusion 2)
 ```
