@@ -8,6 +8,8 @@ add_executable(wpc_tests
   test_arc.cpp
   test_extract.cpp
   test_config.cpp
+  test_ipc.cpp
+  test_openrgb.cpp
 )
-target_link_libraries(wpc_tests PRIVATE wpc_core doctest::doctest)
+target_link_libraries(wpc_tests PRIVATE wpc_core wpc_openrgb doctest::doctest)
 doctest_discover_tests(wpc_tests)
