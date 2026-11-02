@@ -23,8 +23,8 @@ everything is in the code.
 | Linux with **KDE Plasma** (tested on 6.8) and a systemd user session | The picture on screen comes from Plasma over D-Bus. |
 | **[OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub)** 0.9.4 or newer, running | It drives the Corsair devices (RAM, AIO, Commander Core fans…). WallpaperColor sends it colours through its built-in OpenRGB SDK server. Any other OpenRGB SDK server works too (OpenRGB itself listens on port 6742). |
 | Optional: a **Gigabyte motherboard with RGB Fusion 2** (USB controller `048d:5702` or `048d:8297`) | Its onboard lights and its ARGB headers are painted directly, with no extra program. |
-| To build: GCC 14 or newer (C++23; tested with GCC 16), CMake, Ninja and the libraries below | |
-| Internet on the first build | CMake downloads FTXUI (the terminal UI library) once. |
+| glibc 2.39 or newer, x86-64 (Ubuntu 24.04, Fedora 40, Debian 13, Arch and newer) | For the prebuilt release. Building from source has no such limit. |
+| Only to build from source: GCC 14 or newer (C++23; tested with GCC 16), CMake, Ninja, the libraries in [Build from source](#build-from-source) and internet on the first build | CMake downloads FTXUI (the terminal UI library) once. |
 
 ## Install
 
@@ -36,43 +36,44 @@ everything is in the code.
    you want painted, turn on **OpenRGB Integration**. Devices with it off keep their own
    OpenLinkHub effects and are not touched.
 
-### 2. Install the build tools and libraries
+### 2. Download and install
 
-On Arch / CachyOS:
+Download `wallpapercolor-<version>-x86_64.tar.gz` from the
+[latest release](https://github.com/AndruTRADX/WallpaperColor/releases/latest). The programs
+come ready to run: nothing to compile and no libraries to install.
 
 ```sh
-sudo pacman -S --needed base-devel cmake ninja stb libwebp tomlplusplus nlohmann-json cli11 sdbus-cpp doctest
+tar xzf wallpapercolor-*-x86_64.tar.gz
+cd wallpapercolor-*-x86_64
+./install.sh
 ```
 
-On other distributions, install the equivalents: stb (`stb_image.h`), libwebp, toml++,
-nlohmann-json, CLI11, sdbus-c++ 2.x and doctest.
+`install.sh` installs `~/.local/bin/wallpapercolor` and `~/.local/bin/wallpapercolord`, and
+enables and starts the `wallpapercolord` user service. It starts with your graphical session
+from then on. `./install.sh --no-start` installs without starting it. To update, download the
+new release and run its `install.sh`.
+
+Make sure `~/.local/bin` is in your `PATH`.
+
+To build it yourself instead, see [Build from source](#build-from-source).
 
 ### 3. Optional: the motherboard's RGB
 
-Only for Gigabyte boards with RGB Fusion 2. This udev rule lets the person logged in use the
-controller, so the service doesn't need root:
+Only for Gigabyte boards with RGB Fusion 2. A udev rule lets the person logged in use the
+controller, so the service doesn't need root. From the release folder:
+
+```sh
+./install.sh --udev
+```
+
+From a clone of the repository, install it by hand:
 
 ```sh
 sudo install -Dm644 udev/70-wallpapercolor.rules /etc/udev/rules.d/70-wallpapercolor.rules
 sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=hidraw
 ```
 
-### 4. Build and install
-
-```sh
-git clone https://github.com/AndruTRADX/WallpaperColor.git
-cd WallpaperColor
-./install.sh
-```
-
-`install.sh` builds, runs the tests, installs `~/.local/bin/wallpapercolor` and
-`~/.local/bin/wallpapercolord`, and enables and starts the `wallpapercolord` user service. It
-starts with your graphical session from then on. `./install.sh --no-start` installs without
-starting it. Run it again after pulling changes.
-
-Make sure `~/.local/bin` is in your `PATH`.
-
-### 5. Check it works
+### 4. Check it works
 
 ```sh
 wallpapercolor devices   # the devices OpenLinkHub exposes, and the motherboard
@@ -81,7 +82,7 @@ wallpapercolor status    # what the service is doing
 
 If `devices` lists nothing, OpenRGB Integration is still off for every device (step 1).
 
-### 6. Optional: fans or strips on the motherboard's ARGB headers
+### 5. Optional: fans or strips on the motherboard's ARGB headers
 
 Until you describe them, each header is painted in one colour. To paint them LED by LED (a
 gradient around each fan), list the LEDs of every fan chained on each header in the config
@@ -94,6 +95,37 @@ argb_header1 = [8, 8]   # two fans of 8 LEDs, one after the other
 
 If they show the wrong colours (blue looks green, for example), change `argb_order`. Most
 fans are `"GRB"`.
+
+### Build from source
+
+Install the build tools and libraries. On Arch / CachyOS:
+
+```sh
+sudo pacman -S --needed base-devel cmake ninja stb libwebp tomlplusplus nlohmann-json cli11 sdbus-cpp doctest
+```
+
+On other distributions, install the equivalents: stb (`stb_image.h`), libwebp, toml++,
+nlohmann-json, CLI11, sdbus-c++ 2.x and doctest. Then:
+
+```sh
+git clone https://github.com/AndruTRADX/WallpaperColor.git
+cd WallpaperColor
+./install.sh
+```
+
+This `install.sh` builds, runs the tests and installs just like the release one (same
+`--no-start`). Run it again after pulling changes.
+
+### Making a release
+
+`packaging/release.sh` builds the portable tarball into `dist/`: every library except glibc and
+libsystemd is linked into the binaries (`-DWPC_PORTABLE=ON`). Pushing a tag that matches the
+version in `CMakeLists.txt` makes GitHub Actions build it on Ubuntu 24.04 and publish the
+release:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
 
 ## Commands
 

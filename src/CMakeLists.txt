@@ -21,7 +21,7 @@ add_library(wpc_core STATIC
 )
 target_link_libraries(wpc_core
   PUBLIC wpc_util
-  PRIVATE PkgConfig::WEBP tomlplusplus::tomlplusplus nlohmann_json::nlohmann_json)
+  PRIVATE wpc_webp tomlplusplus::tomlplusplus nlohmann_json::nlohmann_json)
 
 # OpenRGB SDK client.
 add_library(wpc_openrgb STATIC openrgb/client.cpp)
