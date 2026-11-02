@@ -26,6 +26,9 @@ enum class Request {
     Resume,
     /// Send the current wallpaper's colours again now.
     Apply,
+    /// Paint everything white (calibration applied) to compare devices, until TestOff.
+    Test,
+    TestOff,
 };
 
 struct ZoneInfo {
@@ -45,6 +48,8 @@ struct DeviceInfo {
 struct Status {
     std::string version;
     bool paused = false;
+    /// Everything is white for comparing devices (see Request::Test).
+    bool testing = false;
     Mode mode = Mode::Arc;
     /// Wallpaper plugin (org.kde.image, org.kde.slideshow…).
     std::string plugin;

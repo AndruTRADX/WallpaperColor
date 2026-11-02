@@ -252,7 +252,22 @@ void App::on_key(const ui::Event& e) {
     if (e != E::Character('x')) pending_remove_.reset();
 
     if (e == E::Character('q') || e == E::Escape) {
+        if (status_ && status_->testing) {
+            try {
+                ipc::call(ipc::Request::TestOff);  // don't leave the PC white
+            } catch (const Error&) {
+            }
+        }
         quit_ = true;
+    } else if (e == E::Character('w')) {
+        bool testing = status_ && status_->testing;
+        try {
+            ipc::call(testing ? ipc::Request::TestOff : ipc::Request::Test);
+            message_ = testing ? "white test off: back to the wallpaper's colours"
+                               : "white test: adjust a calibration until its whites match the others";
+        } catch (const Error& err) {
+            message_ = std::format("service not reachable: {}", err.what());
+        }
     } else if (e == E::ArrowUp || e == E::Character('k')) {
         if (selected_ > 0) --selected_;
     } else if (e == E::ArrowDown || e == E::Character('j')) {
@@ -377,6 +392,7 @@ std::vector<Rgb> App::stops() const {
 ui::Element App::draw() {
     ui::Element help = ui::hbox({key("↑↓"), ui::text(" select  "), key("←→"), ui::text(" change  "),
                                  key("enter"), ui::text(" add  "), key("x"), ui::text(" remove  "),
+                                 key("w"), ui::text(" white test  "),
                                  key("p"), ui::text(" pause/resume  "), key("a"), ui::text(" apply  "),
                                  key("q"), ui::text(" quit")});
     return ui::vbox({
@@ -397,6 +413,10 @@ ui::Element App::draw_header() const {
         lines.push_back(ui::hbox({state, ui::text(std::format("  v{}  ·  {}", s.version, s.plugin)) | ui::dim}));
         std::string name = s.image ? s.image->filename().string() : "—";
         lines.push_back(ui::hbox({ui::text("Wallpaper  ") | ui::bold, ui::text(name)}));
+        if (s.testing) {
+            lines.push_back(ui::text("◻ white test: everything is white; compare devices, adjust calibrations, w to end") |
+                            ui::bold | ui::color(ui::Color::Yellow));
+        }
         if (s.error) lines.push_back(ui::text("⚠ " + *s.error) | ui::color(ui::Color::Red));
     } else {
         lines.push_back(ui::text("✗ " + status_error_) | ui::bold | ui::color(ui::Color::Red));
@@ -428,7 +448,9 @@ ui::Element App::draw_devices() const {
     if (devices().empty()) {
         lines.push_back(ui::text("no devices yet: in OpenLinkHub, turn on \"OpenRGB Integration\"") | ui::dim);
     }
-    Painter painter(stops(), config_.led.mode, config_);
+    // What the service paints: the white test, or the wallpaper's colours.
+    bool testing = status_ && status_->testing;
+    Painter painter(testing ? std::vector<Rgb>{WHITE} : stops(), testing ? Mode::Single : config_.led.mode, config_);
     std::map<std::string, int> seen;  // devices with the same name are numbered: "VENGEANCE RGB 2"
     for (const ipc::DeviceInfo& d : devices()) {
         long same = std::count_if(devices().begin(), devices().end(),

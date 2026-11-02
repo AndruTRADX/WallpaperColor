@@ -24,7 +24,7 @@ TEST_CASE("status round trip") {
 
 TEST_CASE("status json, empty and full") {
     CHECK(to_json(Response::of(Status{})) ==
-          R"({"result":"status","version":"","paused":false,"mode":"arc","plugin":"","image":null,"stops":[],"devices":[],"last_sent":null,"error":null})");
+          R"({"result":"status","version":"","paused":false,"testing":false,"mode":"arc","plugin":"","image":null,"stops":[],"devices":[],"last_sent":null,"error":null})");
     Status full;
     full.version = "0.1.0";
     full.paused = true;
@@ -36,17 +36,18 @@ TEST_CASE("status json, empty and full") {
     full.last_sent = 1793644307;
     full.error = "cannot reach\tthe server";
     CHECK(to_json(Response::of(full)) ==
-          R"({"result":"status","version":"0.1.0","paused":true,"mode":"single","plugin":"org.kde.slideshow","image":"/home/u/Pictures/wallpapers/a \"b\" é.png","stops":["#4d96ff","#a6cbff","#234473"],"devices":[{"name":"iCUE COMMANDER Core","kind":7,"zones":[{"name":"H150i","leds":29},{"name":"8-LED Series Fan","leds":8}]}],"last_sent":1793644307,"error":"cannot reach\tthe server"})");
+          R"({"result":"status","version":"0.1.0","paused":true,"testing":false,"mode":"single","plugin":"org.kde.slideshow","image":"/home/u/Pictures/wallpapers/a \"b\" é.png","stops":["#4d96ff","#a6cbff","#234473"],"devices":[{"name":"iCUE COMMANDER Core","kind":7,"zones":[{"name":"H150i","leds":29},{"name":"8-LED Series Fan","leds":8}]}],"last_sent":1793644307,"error":"cannot reach\tthe server"})");
 }
 
 TEST_CASE("requests: extra fields are ignored, unknown commands are errors") {
     CHECK(request_from_json(R"({"cmd":"status","extra":1})") == Request::Status);
     CHECK(request_from_json(R"({"cmd":"apply"})") == Request::Apply);
+    CHECK(request_from_json(R"({"cmd":"test_off"})") == Request::TestOff);
     try {
         request_from_json(R"({"cmd":"nope"})");
         FAIL("parsed");
     } catch (const Error& e) {
-        CHECK(std::string(e.what()) == "unknown variant `nope`, expected one of `status`, `pause`, `resume`, `apply`");
+        CHECK(std::string(e.what()) == "unknown command `nope`");
     }
     CHECK_THROWS_AS(request_from_json("garbage"), Error);
     CHECK_THROWS_AS(request_from_json(""), Error);

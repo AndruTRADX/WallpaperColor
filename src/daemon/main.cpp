@@ -216,7 +216,8 @@ private:
     void on_file(const FileEvent& e, Todo& todo);
     ipc::Status status() const;
     void sync(bool force);
-    std::vector<ipc::DeviceInfo> send(const std::vector<Rgb>& stops);
+    std::vector<ipc::DeviceInfo> send(const std::vector<Rgb>& stops, Mode mode);
+    void send_white();
     void fade(const std::vector<Output>& outputs);
     void fail(const std::string& message);
     void watch_slides(const std::vector<fs::path>& dirs);
@@ -239,6 +240,8 @@ private:
     /// Whether we already logged that the motherboard RGB cannot be used.
     bool board_warned_ = false;
     bool paused_ = false;
+    /// White test: everything white, the wallpaper ignored (see ipc::Request::Test).
+    bool testing_ = false;
     /// What clients see.
     ipc::Status status_;
 };
@@ -328,6 +331,16 @@ ipc::Response Daemon::answer(ipc::Request request, Todo& todo) {
         case ipc::Request::Apply:
             todo.force = true;
             return ipc::Response::ok();
+        case ipc::Request::Test:
+            testing_ = true;
+            todo.force = true;
+            log("white test on");
+            return ipc::Response::ok();
+        case ipc::Request::TestOff:
+            testing_ = false;
+            todo.force = true;
+            log("white test off");
+            return ipc::Response::ok();
     }
     return ipc::Response::ok();
 }
@@ -376,12 +389,14 @@ bool Daemon::watching_config_dir(const fs::path& dir) const {
 ipc::Status Daemon::status() const {
     ipc::Status s = status_;
     s.paused = paused_;
+    s.testing = testing_;
     s.mode = config_.led.mode;
     return s;
 }
 
 /// Asks Plasma for the picture on screen and sends its colours if anything changed.
 void Daemon::sync(bool force) {
+    if (testing_) return send_white();
     kde::Wallpaper wallpaper;
     try {
         wallpaper = plasma_.wallpaper(0);
@@ -427,7 +442,7 @@ void Daemon::sync(bool force) {
     }
 
     try {
-        std::vector<ipc::DeviceInfo> devices = send(stops);
+        std::vector<ipc::DeviceInfo> devices = send(stops, config_.led.mode);
         std::string joined;
         for (size_t i = 0; i < colours.size(); ++i) joined += (i ? " " : "") + colours[i];
         log("{} → {} device(s) from {}", joined, devices.size(), image->string());
@@ -442,8 +457,20 @@ void Daemon::sync(bool force) {
     }
 }
 
-std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops) {
-    Painter painter(stops, config_.led.mode, config_);
+/// White test: every LED white, through the calibration, so devices can be compared.
+void Daemon::send_white() {
+    try {
+        status_.devices = send({WHITE}, Mode::Single);
+        status_.error.reset();
+        retry_.reset();
+        last_.reset();  // the wallpaper's colours are sent again when the test ends
+    } catch (const Error& e) {
+        fail(std::format("cannot reach the OpenRGB server at {}: {}", config_.openrgb.address, e.what()));
+    }
+}
+
+std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops, Mode mode) {
+    Painter painter(stops, mode, config_);
     std::vector<Output> outputs;
     std::vector<ipc::DeviceInfo> devices;
 

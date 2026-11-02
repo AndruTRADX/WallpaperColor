@@ -26,6 +26,7 @@ where everything is.
 
 ```sh
 wallpapercolor                               # terminal UI: status, device preview, settings
+                                             #   (w: white test, to match calibrations by eye)
 wallpapercolor status                        # what the service is doing (also pause/resume/apply)
 wallpapercolor extract -p picture.png        # colours of a picture (main + arc)
 wallpapercolor devices                       # RGB devices the server exposes

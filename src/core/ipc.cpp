@@ -16,12 +16,13 @@ using Json = nlohmann::ordered_json;
 
 namespace {
 
-constexpr std::string_view REQUEST_NAMES[] = {"status", "pause", "resume", "apply"};
+constexpr std::string_view REQUEST_NAMES[] = {"status", "pause", "resume", "apply", "test", "test_off"};
 
 Json status_fields(const Status& s) {
     Json j;
     j["version"] = s.version;
     j["paused"] = s.paused;
+    j["testing"] = s.testing;
     j["mode"] = mode_name(s.mode);
     j["plugin"] = s.plugin;
     j["image"] = s.image ? Json(s.image->string()) : Json(nullptr);
@@ -42,6 +43,7 @@ Status status_from(const Json& j) {
     Status s;
     s.version = j.at("version").get<std::string>();
     s.paused = j.at("paused").get<bool>();
+    s.testing = j.value("testing", false);
     std::string mode = j.at("mode").get<std::string>();
     if (mode == "arc") s.mode = Mode::Arc;
     else if (mode == "single") s.mode = Mode::Single;
@@ -102,10 +104,10 @@ Request request_from_json(std::string_view line) {
     if (!j.contains("cmd")) throw Error("missing field `cmd`");
     if (!j["cmd"].is_string()) throw Error("invalid type: expected variant identifier");
     std::string cmd = j["cmd"].get<std::string>();
-    for (int i = 0; i < 4; ++i) {
+    for (size_t i = 0; i < std::size(REQUEST_NAMES); ++i) {
         if (cmd == REQUEST_NAMES[i]) return static_cast<Request>(i);
     }
-    throw Error(std::format("unknown variant `{}`, expected one of `status`, `pause`, `resume`, `apply`", cmd));
+    throw Error(std::format("unknown command `{}`", cmd));
 }
 
 Response response_from_json(std::string_view line) {
