@@ -11,7 +11,7 @@ el servicio funciona solo, sin depender de ella.
 ### OpenLinkHub (0.9.4, el que tienes instalado)
 
 | Hallazgo | Consecuencia |
-|---|---|
+| --- | --- |
 | Los perfiles RGB (`static`, `rainbow`, `nebula`…) son **efectos escritos en Go** dentro de OpenLinkHub (`src/rgb/*.go`). La WebUI solo lista esos nombres. | **No se puede añadir un perfil "Wallpaper" al desplegable sin modificar OpenLinkHub.** Queda como fase opcional: una contribución upstream (fase 6). |
 | OpenLinkHub trae un **servidor OpenRGB SDK** (protocolo v4, puerto 6743, `enableOpenRGBTargetServer`). En la WebUI cada dispositivo tiene un interruptor **"OpenRGB Integration"**: al activarlo, OpenLinkHub deja de aplicar sus efectos a ese dispositivo y acepta colores de un cliente externo. | **Esta es la forma de "elegirlo desde la WebUI".** Activas el interruptor en los dispositivos que quieras que sigan al fondo; lo desactivas y vuelven a sus perfiles. El servicio será un **cliente OpenRGB SDK**. |
 | El servidor SDK solo expone los dispositivos con la integración activada, con nombre, zonas y número de LEDs (`REQUEST_CONTROLLER_COUNT/DATA`). | **Leer dispositivos** = preguntarle al servidor SDK. La lista completa (también los no activados) sale de la API REST `/api/devices/`, que la TUI puede mostrar. |
@@ -21,7 +21,7 @@ el servicio funciona solo, sin depender de ella.
 ### Plasma
 
 | Hallazgo | Consecuencia |
-|---|---|
+| --- | --- |
 | `org.kde.PlasmaShell.wallpaper(0)` por D-Bus devuelve el campo `Image` con **la diapositiva que se ve ahora mismo**, también en modo presentación (probado: devolvió 3 imágenes distintas en 3 cambios). | **Fuente de verdad sin heurísticas.** No hay que adivinar qué imagen se ve. |
 | La señal `wallpaperChanged` **no** se emite al pasar de diapositiva, solo al cambiar la configuración. | Hace falta un **disparador** para los cambios de diapositiva: inotify `IN_OPEN` sobre las carpetas de la presentación (plasmashell abre la imagen nueva). Es un evento del kernel, así que el servicio duerme en `poll()` sin gastar CPU, y al despertar le pregunta a D-Bus cuál es la imagen. |
 
@@ -73,7 +73,7 @@ WallpaperColor/
 ### Decisiones técnicas
 
 | Decisión | Motivo |
-|---|---|
+| --- | --- |
 | **Sin tokio en el servicio**: un hilo y `poll()` | Objetivo de menos de 5 MB de RAM y 0 % de CPU en reposo. Ninguna de nuestras E/S necesita concurrencia. |
 | **Cliente OpenRGB SDK propio** (unas 300 líneas) | Los crates existentes obligan a usar tokio y apuntan a v5/v6; OpenLinkHub habla v4. El subconjunto que necesitamos es pequeño y está documentado. |
 | **zbus** con la API bloqueante | D-Bus en Rust puro, sin libdbus. |
@@ -88,7 +88,9 @@ WallpaperColor/
 Cada fase termina en algo que se puede usar y probar. No se pasa a la siguiente sin cumplir el criterio de salida.
 
 ### Fase 0: validar el hardware (sin Rust)
+
 El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
+
 1. Activar el servidor SDK de OpenLinkHub (`enableOpenRGBTargetServer: true`, requiere sudo y reiniciar el servicio).
 2. Activar "OpenRGB Integration" en la RAM desde la WebUI.
 3. Enviar un color con un script mínimo de prueba al puerto 6743. **Tú confirmas mirando los LEDs.**
@@ -98,6 +100,7 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 **Criterio de salida:** ves cambiar físicamente la RAM y los ventiladores desde un cliente externo.
 
 ### Fase 1: núcleo y extracción de color
+
 - Workspace de Cargo, `wpc-core`, configuración TOML.
 - Portar la extracción de color con tests (imágenes de prueba con color esperado).
 - `wallpapercolor extract <imagen>` imprime el color y muestra una muestra en la terminal.
@@ -105,6 +108,7 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 **Criterio de salida:** mismos colores que el prototipo de Python en tus imágenes.
 
 ### Fase 2: cliente OpenRGB
+
 - `wpc-openrgb`: conectar, leer controladores (nombre, zonas, LEDs) y enviar colores.
 - `wallpapercolor devices` y `wallpapercolor set '#ff0000'`.
 - Tests contra un servidor SDK falso dentro del propio test.
@@ -112,6 +116,7 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 **Criterio de salida:** `set` cambia los LEDs reales.
 
 ### Fase 3: el servicio (primer resultado completo)
+
 - `wpc-kde`: imagen actual por D-Bus, señal `wallpaperChanged`, disparador inotify sobre las carpetas de la presentación.
 - `wallpapercolord`: bucle de eventos con agrupación de 1 s, caché para no reenviar el mismo color, reconexión si OpenLinkHub se reinicia.
 - Unidad de systemd de usuario. Se mide la RAM y la CPU reales.
@@ -119,6 +124,7 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 **Criterio de salida:** con la presentación activa, los LEDs siguen cada diapositiva; menos de 5 MB de RAM y 0 % de CPU en reposo.
 
 ### Fase 4: IPC y TUI
+
 - Protocolo por socket Unix (JSON por líneas): `status`, `devices`, `set-strategy`, `brightness`, `pause`/`resume`, `apply-now`.
 - TUI con ratatui:
   - fondo actual y paleta extraída (muestras de color);
@@ -130,15 +136,18 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 **Criterio de salida:** todo se configura desde la TUI y se guarda en el TOML.
 
 ### Fase 5: crecer
+
 - **Paleta multizona:** un color distinto por dispositivo (RAM = dominante, ventiladores = secundario…).
 - **Transiciones** suaves entre colores (fundido).
 - **Más fuentes:** GNOME, Hyprland/hyprpaper, swww.
 - **Más hardware:** sink para el OpenRGB real (puerto 6742), que cubriría el ARGB de la placa Gigabyte.
 
 ### Fase 6 (opcional): perfil "Wallpaper" en el desplegable de OpenLinkHub
+
 Proponer upstream un perfil "external" controlado por API, para que aparezca como un perfil más en la WebUI en lugar del interruptor de integración.
 
 ### Integración con el rice
+
 Cuando la fase 3 esté estable: `install.sh` del repo `dotfiles` compila e instala el servicio, y `doctor.sh` comprueba que está corriendo.
 
 ---
@@ -146,7 +155,7 @@ Cuando la fase 3 esté estable: `install.sh` del repo `dotfiles` compila e insta
 ## 4. Riesgos
 
 | Riesgo | Mitigación |
-|---|---|
+| --- | --- |
 | El servidor SDK de OpenLinkHub no cambia los LEDs físicamente (como pasó con la REST) | La fase 0 lo comprueba antes de escribir Rust. Si falla, se investiga el envío por dispositivo de la REST (`/api/color/change`) o se abre un issue upstream. |
 | Otro programa abre imágenes de la carpeta y dispara inotify | Solo es un disparador: la verdad viene de D-Bus, así que un evento falso no cambia nada (misma imagen → caché). |
 | Plasma cambia la API D-Bus en una versión futura | Está aislado en `wpc-kde`; se adapta sin tocar el resto. |

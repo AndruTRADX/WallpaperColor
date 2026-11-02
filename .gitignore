@@ -1,1 +1,6 @@
 /target
+openlinkhub/src/
+openlinkhub/pkg/
+openlinkhub/openlinkhub/
+openlinkhub/*.pkg.tar.*
+openlinkhub/*.log
