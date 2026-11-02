@@ -23,4 +23,15 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)   # LTO, like the Rust releas
 # Version for --version and the IPC status, from project() above.
 add_compile_definitions(WPC_VERSION="${PROJECT_VERSION}")
 
-add_executable(wallpapercolor src/client/main.cpp)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
+find_package(tomlplusplus REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(CLI11 REQUIRED)
+find_package(sdbus-c++ REQUIRED)
+find_package(doctest REQUIRED)
+
+add_subdirectory(src)
+
+enable_testing()
+add_subdirectory(tests)
