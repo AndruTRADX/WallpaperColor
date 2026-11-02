@@ -1,0 +1,14 @@
+[Unit]
+Description=WallpaperColor: paint RGB devices with the wallpaper on screen
+Documentation=https://github.com/AndruTRADX/WallpaperColor
+PartOf=graphical-session.target
+After=graphical-session.target plasma-plasmashell.service
+
+[Service]
+ExecStart=%h/.local/bin/wallpapercolord
+Restart=on-failure
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target

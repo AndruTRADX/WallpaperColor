@@ -118,13 +118,14 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 
 **Resultado:** lee tus 3 dispositivos con sus zonas (RAM 2 × 10 LEDs; Commander Core 61 = AIO H150i 29 + 4 ventiladores × 8) y `set --image` con el fondo actual pintó todo de azul cielo. Confirmado mirando el hardware.
 
-### Fase 3: el servicio (primer resultado completo)
+### Fase 3: el servicio ✅
 
-- `wpc-kde`: imagen actual por D-Bus, señal `wallpaperChanged`, disparador inotify sobre las carpetas de la presentación.
-- `wallpapercolord`: bucle de eventos con agrupación de 1 s, caché para no reenviar el mismo color, reintentos si OpenLinkHub se reinicia.
-- Unidad de systemd de usuario. Se mide la RAM y la CPU reales.
+- `wpc-kde`: imagen en pantalla por D-Bus (`wallpaper(0)`), paquetes de fondo con variante clara/oscura, señales `wallpaperChanged` y reinicio de plasmashell. zbus 5 con API bloqueante (zbus 6 la eliminó).
+- `wallpapercolord`: hilo principal dormido en un canal; hilos auxiliares que también duermen (D-Bus e inotify). Disparadores: archivos abiertos en las carpetas de la presentación, cambios en `plasma-org.kde.plasma.desktop-appletsrc` (cambiar el fondo desde los ajustes **no** siempre emite `wallpaperChanged`), `kdeglobals` y el propio TOML (recarga en caliente). Ráfagas agrupadas (800 ms), caché por imagen + ajustes, reintentos con espera exponencial (2–60 s) si OpenLinkHub o Plasma no responden.
+- Modo **arco** por defecto (`[led] mode = "arc" | "single"`): 3 colores distintos (≥ 30° de tono) como degradado por zona, anillos sin costura y RAM de arriba abajo. Con menos colores, tonos claro y oscuro del principal (se probaron tonos vecinos y repetir el color: se descartaron por inventar colores o perder la coherencia de la paleta).
+- `systemd/wallpapercolord.service` + `install.sh`.
 
-**Criterio de salida:** con la presentación activa, los LEDs siguen cada diapositiva; menos de 5 MB de RAM y 0 % de CPU en reposo.
+**Resultado:** sigue la presentación, los cambios manuales de fondo y los cambios desde los ajustes en ~1 s. En reposo: **0 % de CPU** (0 ticks en 30 s) y **5,3 MB** de RAM (7 hilos; el extra sobre los 5 MB lo ponen los hilos internos de zbus).
 
 ### Fase 4: IPC y TUI
 
