@@ -176,7 +176,8 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
                 .map(|c| format!("{}{c}", swatch(*c, 2)))
                 .collect();
             for c in &ctrls {
-                client.set_leds(c.index, &c.paint(&stops))?;
+                let leds = c.paint_calibrated(&stops, |zone| config.gain(&c.name, zone));
+                client.set_leds(c.index, &leds)?;
                 out!("{} → [{}] {}", label.join(" "), c.index, c.name);
             }
             Ok(ExitCode::SUCCESS)

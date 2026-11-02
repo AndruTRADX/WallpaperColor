@@ -13,6 +13,34 @@ pub struct Config {
     pub led: LedConfig,
     pub extract: ExtractConfig,
     pub openrgb: OpenRgbConfig,
+    /// Colour correction for LEDs that render colours off (e.g. weak blue: white looks yellow).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub calibration: Vec<Calibration>,
+}
+
+/// Per-channel gains for the LEDs of one device, or of one zone of it. The first matching
+/// entry wins. Names match case-insensitively and partially (`"fan"` matches `"8-LED Series Fan"`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Calibration {
+    /// Device name as `wallpapercolor devices` shows it.
+    pub device: String,
+    /// Zone name; omitted = every zone of the device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone: Option<String>,
+    /// Red, green and blue gains, 0–1 (lower the channels that are too strong).
+    pub gain: [f64; 3],
+}
+
+impl Config {
+    /// Gains for `zone` of `device`: the first matching calibration, else none.
+    pub fn gain(&self, device: &str, zone: &str) -> [f32; 3] {
+        let has = |hay: &str, needle: &str| hay.to_lowercase().contains(&needle.to_lowercase());
+        self.calibration
+            .iter()
+            .find(|c| has(device, &c.device) && c.zone.as_deref().is_none_or(|z| has(zone, z)))
+            .map_or([1.0; 3], |c| c.gain.map(|g| g.clamp(0.0, 1.0) as f32))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -121,6 +149,27 @@ mod tests {
         let c = Config::from_toml("[led]\nmode = \"single\"\n").unwrap();
         assert_eq!(c.led.mode, Mode::Single);
         assert!(Config::from_toml("[led]\nmode = \"rainbow\"\n").is_err());
+    }
+
+    #[test]
+    fn calibration_matches_device_and_zone() {
+        let c = Config::from_toml(
+            "[[calibration]]\ndevice = \"commander\"\nzone = \"fan\"\ngain = [0.72, 0.78, 1.0]\n\n\
+             [[calibration]]\ndevice = \"VENGEANCE\"\ngain = [1.0, 0.9, 0.9]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            c.gain("iCUE COMMANDER Core", "8-LED Series Fan"),
+            [0.72, 0.78, 1.0]
+        );
+        assert_eq!(
+            c.gain("iCUE COMMANDER Core", "H150i ELITE CAPELLIX XT"),
+            [1.0; 3]
+        );
+        assert_eq!(c.gain("VENGEANCE RGB", "anything"), [1.0, 0.9, 0.9]);
+        assert_eq!(c.gain("Other", "fan"), [1.0; 3]);
+        assert!(Config::default().to_toml().find("calibration").is_none());
+        assert_eq!(Config::from_toml(&c.to_toml()).unwrap(), c);
     }
 
     #[test]

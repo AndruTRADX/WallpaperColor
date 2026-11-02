@@ -77,6 +77,11 @@ pub struct Controller {
     pub colors: Vec<Rgb>,
 }
 
+fn scale(c: Rgb, [r, g, b]: [f32; 3]) -> Rgb {
+    let s = |v: u8, k: f32| (v as f32 * k).round().clamp(0.0, 255.0) as u8;
+    Rgb::new(s(c.r, r), s(c.g, g), s(c.b, b))
+}
+
 /// OpenRGB device type of RAM modules.
 pub const DEVICE_TYPE_DRAM: i32 = 1;
 
@@ -89,14 +94,29 @@ impl Controller {
     /// a seamless ring elsewhere (fans, pumps and strips tend to be loops). One stop paints
     /// everything that colour.
     pub fn paint(&self, stops: &[Rgb]) -> Vec<Rgb> {
+        self.paint_calibrated(stops, |_| [1.0; 3])
+    }
+
+    /// Like [`paint`](Self::paint), then scales each zone's red, green and blue by
+    /// `gain(zone name)` to correct LEDs that render colours off.
+    pub fn paint_calibrated(&self, stops: &[Rgb], gain: impl Fn(&str) -> [f32; 3]) -> Vec<Rgb> {
         let ring = self.kind != DEVICE_TYPE_DRAM;
         let zoned: u32 = self.zones.iter().map(|z| z.leds).sum();
         if zoned as usize != self.led_count() {
-            return gradient(stops, self.led_count(), ring);
+            let g = gain("");
+            return gradient(stops, self.led_count(), ring)
+                .into_iter()
+                .map(|c| scale(c, g))
+                .collect();
         }
         self.zones
             .iter()
-            .flat_map(|z| gradient(stops, z.leds as usize, ring))
+            .flat_map(|z| {
+                let g = gain(&z.name);
+                gradient(stops, z.leds as usize, ring)
+                    .into_iter()
+                    .map(move |c| scale(c, g))
+            })
             .collect()
     }
 }

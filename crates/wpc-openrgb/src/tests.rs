@@ -150,6 +150,26 @@ fn lists_controllers() {
 }
 
 #[test]
+fn calibration_scales_only_the_matching_zones() {
+    let (addr, _rx) = serve(devices(), 4);
+    let mut c = Client::connect(&addr, "test").unwrap();
+    let cc = c.controller(1).unwrap();
+    let leds = cc.paint_calibrated(&[Rgb::WHITE], |zone| {
+        if zone.starts_with("Fan") {
+            [0.72, 0.78, 1.0]
+        } else {
+            [1.0; 3]
+        }
+    });
+    assert_eq!(leds.len(), 61);
+    assert!(leds[..29].iter().all(|&c| c == Rgb::WHITE), "AIO untouched");
+    assert!(
+        leds[29..].iter().all(|&c| c == Rgb::new(184, 199, 255)),
+        "fans corrected"
+    );
+}
+
+#[test]
 fn negotiates_down_to_newest_common_version() {
     let (addr, _rx) = serve(vec![], 6);
     assert_eq!(Client::connect(&addr, "test").unwrap().protocol(), 4);

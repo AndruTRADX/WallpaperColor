@@ -259,7 +259,8 @@ impl Daemon {
         )?;
         let ctrls = client.controllers()?;
         for c in &ctrls {
-            client.set_leds(c.index, &c.paint(stops))?;
+            let leds = c.paint_calibrated(stops, |zone| self.config.gain(&c.name, zone));
+            client.set_leds(c.index, &leds)?;
         }
         Ok(ctrls.len())
     }
