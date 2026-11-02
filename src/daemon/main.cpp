@@ -17,6 +17,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <map>
+
+#include <malloc.h>
 #include <memory>
 #include <optional>
 #include <string>
@@ -305,7 +307,13 @@ ipc::Response Daemon::answer(ipc::Request request, Todo& todo) {
 }
 
 void Daemon::on_file(const FileEvent& e, Todo& todo) {
-    if (slide_dirs_.contains(e.watch)) {
+    if (auto slide_dir = slide_dirs_.find(e.watch); slide_dir != slide_dirs_.end()) {
+        // Opening the picture on screen is not a new slide: it is usually us, reading it to take
+        // its colours. Without this, each retry while OpenLinkHub is down triggered the next one
+        // 0.8 s later instead of backing off (a bug the Rust version had).
+        bool opened_current = (e.mask & IN_OPEN) && status_.image == slide_dir->second / e.name;
+        if (opened_current) return;
+
         bool is_image = std::find(IMAGE_EXTENSIONS.begin(), IMAGE_EXTENSIONS.end(), extension_of(e.name)) !=
                         IMAGE_EXTENSIONS.end();
         bool new_folder = (e.mask & IN_CREATE) && (e.mask & IN_ISDIR);
@@ -377,7 +385,9 @@ void Daemon::sync(bool force) {
     std::vector<Rgb> stops;
     try {
         stops = extract_path(*image, config_.extract).stops(config_.led.mode);
+        malloc_trim(0);  // give the decoded picture's memory back to the system
     } catch (const Error& e) {
+        malloc_trim(0);
         retry_.reset();
         status_.error = std::format("{}: {}", image->string(), e.what());
         return log("{}: {}", image->string(), e.what());
