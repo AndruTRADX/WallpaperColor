@@ -37,7 +37,7 @@ el servicio funciona solo, sin depender de ella.
 
 Dos programas que se comunican por un socket local. El servicio no sabe nada de terminales.
 
-```
+```text
                  ┌──────────────────────────── wallpapercolord (servicio) ─────────────────────────────┐
   Plasma D-Bus ──┤ Source (trait)         Extractor (trait)        Sink (trait)                         │
   inotify ───────┤  └ KDE Plasma    ──▶   └ Vivid (prototipo)  ──▶  └ OpenRGB SDK  ──▶ OpenLinkHub :6743 │──▶ LEDs
@@ -55,7 +55,7 @@ Dos programas que se comunican por un socket local. El servicio no sabe nada de 
 
 ### Workspace de Cargo
 
-```
+```text
 WallpaperColor/
 ├── Cargo.toml                 workspace
 ├── crates/
