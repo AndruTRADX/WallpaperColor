@@ -173,9 +173,15 @@ port has to copy). What matches the Rust reference, checked against `tests/golde
 | Daemon scenario (status, pause, resume, apply, reload, config typo, OpenRGB down → backoff → back) | identical log and answers; 0 CPU ticks idle |
 | TUI at 100×30, before and after a key press, and the saved config | identical text and file; only green/cyan are sent as ANSI codes instead of 256-colour indexes |
 
-Not yet done: you watching the LEDs, a week of use, and phase 7 (switching `install.sh`, deleting Rust).
+Hardware: red confirmed on the RAM, AIO and fans. The C++ service has been installed and
+running since 2026-11-02 (`install.sh` now builds with CMake). Still to do: a week of normal
+use, then delete the Rust code (`crates/`, `Cargo.*`, `target/`).
 
-**Open decisions:**
+**Decisions (2026-11-02):** (1) JPEG differences accepted: stb_image stays. (2) Retry bug
+fixed in C++: inotify opens of the picture on screen are ignored, and the backoff now works
+(2 s, 4 s, …). (3) `malloc_trim(0)` after each extraction: idle memory went from 27 MB to
+about 7.5 MB (Rust: 22 MB); 4 threads instead of 8. So on these two points C++ differs from
+the frozen Rust code, on purpose. The questions as they were asked:
 
 1. **JPEG decoding.** zune-jpeg, the Rust decoder, has its own 14-bit colour conversion and its
    own chroma upsampling. No standard decoder does the same (stb_image: 2–10 % of bytes differ
