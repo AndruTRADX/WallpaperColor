@@ -462,16 +462,24 @@ std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops) {
     std::optional<fusion2::Board> board;
     if (config_.motherboard.enabled) {
         try {
-            board = fusion2::Board::open();
+            board = fusion2::Board::open(config_.motherboard);
         } catch (const Error& e) {
             if (!board_warned_) log("{}; painting the other devices", e.what());
             board_warned_ = true;
         }
     }
     if (board) {
-        outputs.push_back(Output{"motherboard", painter.zone(fusion2::DEVICE_NAME, fusion2::ZONE_NAME, 1, false), {},
-                                 [&board](const std::vector<Rgb>& frame) { board->set_colour(frame[0]); }});
-        devices.push_back(ipc::DeviceInfo{fusion2::DEVICE_NAME, fusion2::DEVICE_TYPE, {{fusion2::ZONE_NAME, 1}}});
+        ipc::DeviceInfo d{fusion2::DEVICE_NAME, fusion2::DEVICE_TYPE, {{fusion2::ONBOARD_ZONE, 1}}};
+        outputs.push_back(Output{"motherboard", painter.zone(fusion2::DEVICE_NAME, fusion2::ONBOARD_ZONE, 1, false),
+                                 {}, [&board](const std::vector<Rgb>& frame) { board->set_onboard(frame[0]); }});
+        for (int h = 0; h < fusion2::HEADERS; ++h) {
+            uint32_t leds = board->header_colours(h);
+            outputs.push_back(Output{std::format("motherboard header {}", h),
+                                     painter.zone(fusion2::DEVICE_NAME, fusion2::HEADER_ZONE, leds, true), {},
+                                     [&board, h](const std::vector<Rgb>& frame) { board->set_header(h, frame); }});
+            d.zones.push_back(ipc::ZoneInfo{fusion2::HEADER_ZONE, leds});
+        }
+        devices.push_back(std::move(d));
     }
 
     fade(outputs);

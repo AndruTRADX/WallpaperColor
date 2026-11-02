@@ -152,7 +152,7 @@ int run_devices(const Config& config) {
         return EXIT_SUCCESS;
     }
     try {
-        std::optional<fusion2::Board> board = fusion2::Board::open();
+        std::optional<fusion2::Board> board = fusion2::Board::open(config.motherboard);
         out(board ? std::format("motherboard RGB: {} ({})", board->product(), board->path().string())
                   : std::string("motherboard RGB: none found"));
     } catch (const Error& e) {
@@ -186,7 +186,7 @@ int run_set(const Config& config, const SetArgs& args) {
     openrgb::Client client = connect(config);
     std::vector<openrgb::Controller> controllers = client.controllers();
     std::optional<fusion2::Board> board;
-    if (config.motherboard.enabled) board = fusion2::Board::open();
+    if (config.motherboard.enabled) board = fusion2::Board::open(config.motherboard);
     if (controllers.empty() && !board) {
         throw Error("no devices exposed: turn on \"OpenRGB Integration\" in OpenLinkHub");
     }
@@ -198,7 +198,10 @@ int run_set(const Config& config, const SetArgs& args) {
         out(std::format("{} → [{}] {}", join(label, " "), c.index, c.name));
     }
     if (board) {
-        board->set_colour(painter.zone(fusion2::DEVICE_NAME, fusion2::ZONE_NAME, 1, false)[0]);
+        board->set_onboard(painter.zone(fusion2::DEVICE_NAME, fusion2::ONBOARD_ZONE, 1, false)[0]);
+        for (int h = 0; h < fusion2::HEADERS; ++h) {
+            board->set_header(h, painter.zone(fusion2::DEVICE_NAME, fusion2::HEADER_ZONE, board->header_colours(h), true));
+        }
         out(std::format("{} → {}", join(label, " "), fusion2::DEVICE_NAME));
     }
     return EXIT_SUCCESS;

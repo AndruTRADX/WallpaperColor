@@ -70,3 +70,12 @@ TEST_CASE("motherboard can be turned off") {
     CHECK(Config::from_toml(c.to_toml()) == c);
     CHECK_THROWS_AS(Config::from_toml("[motherboard]\nenabled = \"no\"\n"), Error);
 }
+
+TEST_CASE("ARGB header settings") {
+    Config c = Config::from_toml("[motherboard]\nargb_order = \"RGB\"\nargb_leds = [8, 12]\n");
+    CHECK(c.motherboard.argb_order == "RGB");
+    CHECK(c.motherboard.argb_leds == std::array<uint32_t, 2>{8, 12});
+    CHECK(Config::from_toml(c.to_toml()) == c);
+    CHECK_THROWS_AS(Config::from_toml("[motherboard]\nargb_order = \"RRB\"\n"), Error);
+    CHECK_THROWS_AS(Config::from_toml("[motherboard]\nargb_leds = [8]\n"), Error);
+}

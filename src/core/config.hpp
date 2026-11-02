@@ -51,6 +51,10 @@ struct Calibration {
 struct MotherboardConfig {
     /// Paint it too, when there is one and we may use it.
     bool enabled = true;
+    /// The colour order of what is plugged into the ARGB headers ("GRB" for most fans).
+    std::string argb_order = "GRB";
+    /// LEDs on ARGB header 1 and 2; 0 = unknown: the whole header gets one colour.
+    std::array<uint32_t, 2> argb_leds = {0, 0};
     bool operator==(const MotherboardConfig&) const = default;
 };
 
