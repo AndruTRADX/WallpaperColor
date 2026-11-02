@@ -10,3 +10,6 @@ authors.workspace = true
 wpc-core.workspace = true
 clap.workspace = true
 wpc-openrgb = { path = "../wpc-openrgb" }
+ratatui.workspace = true
+toml_edit.workspace = true
+serde_json.workspace = true

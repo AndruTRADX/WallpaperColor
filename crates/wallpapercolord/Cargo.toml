@@ -11,3 +11,4 @@ wpc-core.workspace = true
 wpc-openrgb = { path = "../wpc-openrgb" }
 wpc-kde = { path = "../wpc-kde" }
 inotify = { version = "0.11", default-features = false }
+serde_json.workspace = true

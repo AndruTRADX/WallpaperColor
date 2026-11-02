@@ -1,10 +1,14 @@
-//! `wallpapercolor`: terminal client for WallpaperColor.
+//! `wallpapercolor`: terminal client for WallpaperColor. Without a subcommand: the terminal UI.
+
+mod settings;
+mod tui;
 
 use clap::{Args, Parser, Subcommand};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wpc_core::config::Mode;
+use wpc_core::ipc;
 use wpc_core::{Config, Rgb, extract_path};
 use wpc_openrgb::Client;
 
@@ -30,7 +34,7 @@ struct Cli {
     config: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -50,6 +54,16 @@ enum Command {
     Set(SetArgs),
     /// Print the effective configuration (defaults included) as TOML
     Config,
+    /// Show what the service is doing
+    Status,
+    /// Stop sending colours until resume (the service keeps running)
+    Pause,
+    /// Start sending colours again
+    Resume,
+    /// Send the current wallpaper's colours again now
+    Apply,
+    /// Open the terminal UI (the default)
+    Tui,
 }
 
 #[derive(Args)]
@@ -83,12 +97,70 @@ fn main() -> ExitCode {
 type Error = Box<dyn std::error::Error>;
 
 fn run(cli: Cli) -> Result<ExitCode, Error> {
-    let config = match cli.config.clone().or_else(Config::default_path) {
-        Some(path) => Config::load(&path)?,
+    let config_path = cli.config.clone().or_else(Config::default_path);
+    let config = match &config_path {
+        Some(path) => Config::load(path)?,
         None => Config::default(),
     };
 
-    match cli.command {
+    let Some(command) = cli.command else {
+        return open_tui(config_path);
+    };
+    match command {
+        Command::Tui => open_tui(config_path),
+        Command::Status => {
+            let s = match ipc::call(&ipc::Request::Status).map_err(service_down)? {
+                ipc::Response::Status(s) => s,
+                other => return Err(format!("unexpected answer: {other:?}").into()),
+            };
+            out!(
+                "{} v{}  mode {:?}",
+                if s.paused { "paused" } else { "running" },
+                s.version,
+                s.mode
+            );
+            let image = s.image.as_ref().map(|p| p.display().to_string());
+            out!(
+                "wallpaper  {} ({})",
+                image.unwrap_or_else(|| "—".into()),
+                s.plugin
+            );
+            let stops: Vec<String> = s
+                .stops
+                .iter()
+                .map(|h| match h.parse::<Rgb>() {
+                    Ok(c) => format!("{}{h}", swatch(c, 2)),
+                    Err(_) => h.clone(),
+                })
+                .collect();
+            out!("colours    {}", stops.join(" "));
+            for d in &s.devices {
+                let zones: Vec<String> = d
+                    .zones
+                    .iter()
+                    .map(|z| format!("{} ({})", z.name, z.leds))
+                    .collect();
+                out!("device     {}: {}", d.name, zones.join(", "));
+            }
+            if let Some(e) = &s.error {
+                out!("problem    {e}");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Pause | Command::Resume | Command::Apply => {
+            let (request, done) = match command {
+                Command::Pause => (ipc::Request::Pause, "paused"),
+                Command::Resume => (ipc::Request::Resume, "resumed"),
+                _ => (ipc::Request::Apply, "colours sent again"),
+            };
+            match ipc::call(&request).map_err(service_down)? {
+                ipc::Response::Error { message } => Err(message.into()),
+                _ => {
+                    out!("{done}");
+                    Ok(ExitCode::SUCCESS)
+                }
+            }
+        }
         Command::Extract { images, palette } => {
             let mut failed = false;
             for path in &images {
@@ -187,6 +259,16 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             Ok(ExitCode::SUCCESS)
         }
     }
+}
+
+fn open_tui(config_path: Option<std::path::PathBuf>) -> Result<ExitCode, Error> {
+    let path = config_path.ok_or("no config path: set HOME or XDG_CONFIG_HOME")?;
+    tui::run(&path)?;
+    Ok(ExitCode::SUCCESS)
+}
+
+fn service_down(e: std::io::Error) -> Error {
+    format!("the service is not running ({e}): systemctl --user start wallpapercolord").into()
 }
 
 fn connect(config: &Config) -> Result<Client, Error> {

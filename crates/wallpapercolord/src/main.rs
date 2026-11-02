@@ -2,6 +2,7 @@
 //!
 //! One event loop on the main thread, fed by three sleeping helper threads:
 //! - D-Bus: Plasma's `wallpaperChanged` signal and plasmashell (re)starts;
+//! - a Unix socket for the terminal client (status, pause, resume, apply);
 //! - inotify: files opened in the slideshow folders (plasmashell opens the next slide), and
 //!   changes to the desktop settings (`plasma-org.kde.plasma.desktop-appletsrc`), `kdeglobals`
 //!   (light/dark wallpaper variants) and our config file.
@@ -14,10 +15,13 @@
 use inotify::{EventMask, Inotify, WatchDescriptor, WatchMask, Watches};
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use std::{fs, thread};
+use wpc_core::ipc::{self, DeviceInfo, Request, Response, Status, ZoneInfo};
 use wpc_core::{Config, extract_path};
 use wpc_kde::Plasma;
 use wpc_openrgb::Client;
@@ -35,6 +39,19 @@ enum Event {
     Plasma,
     /// inotify event: watch descriptor and file name.
     File(WatchDescriptor, Option<OsString>, EventMask),
+    /// A client request and where to send the answer.
+    Ipc(Request, Sender<Response>),
+}
+
+/// What a burst of events asks for.
+#[derive(Default)]
+struct Todo {
+    /// The picture may have changed.
+    check: bool,
+    /// Re-read the config.
+    reload: bool,
+    /// Send even if nothing changed.
+    force: bool,
 }
 
 macro_rules! log {
@@ -69,6 +86,9 @@ struct Daemon {
     /// What was last sent: picture, its mtime and the settings used.
     last: Option<String>,
     retry: Option<(Instant, Duration)>,
+    paused: bool,
+    /// What clients see.
+    status: Status,
 }
 
 impl Daemon {
@@ -78,6 +98,7 @@ impl Daemon {
         let (tx, rx) = mpsc::channel();
 
         spawn_dbus_listener(&plasma, &tx)?;
+        spawn_ipc_listener(tx.clone())?;
         let inotify = Inotify::init()?;
         let mut watches = inotify.watches();
         spawn_inotify_reader(inotify, tx);
@@ -121,6 +142,11 @@ impl Daemon {
             config_dirs,
             last: None,
             retry: None,
+            paused: false,
+            status: Status {
+                version: env!("CARGO_PKG_VERSION").into(),
+                ..Default::default()
+            },
         })
     }
 
@@ -139,30 +165,55 @@ impl Daemon {
                 None => Some(self.rx.recv().expect("event threads stopped")),
             };
 
-            let mut check = event.is_none(); // retry time
-            let mut reload = false;
+            let mut todo = Todo {
+                check: event.is_none(), // retry time
+                ..Default::default()
+            };
             if let Some(e) = event {
-                self.classify(e, &mut check, &mut reload);
+                self.classify(e, &mut todo);
             }
-            if !check && !reload {
+            if !todo.check && !todo.reload && !todo.force {
                 continue;
             }
-            // coalesce the rest of the burst
-            while let Ok(e) = self.rx.recv_timeout(SETTLE) {
-                self.classify(e, &mut check, &mut reload);
+            // coalesce the rest of the burst (client requests are still answered at once)
+            if !todo.force {
+                while let Ok(e) = self.rx.recv_timeout(SETTLE) {
+                    self.classify(e, &mut todo);
+                }
             }
-            if reload {
+            if todo.reload {
                 self.config = load_config(self.config_path.as_deref());
                 log!("config reloaded: mode {:?}", self.config.led.mode);
             }
-            self.sync(reload);
+            self.sync(todo.reload || todo.force);
         }
     }
 
-    /// Decides whether an event can mean a new picture (`check`) or new settings (`reload`).
-    fn classify(&self, e: Event, check: &mut bool, reload: &mut bool) {
+    /// Decides what an event asks for; answers client requests right away.
+    fn classify(&mut self, e: Event, todo: &mut Todo) {
         match e {
-            Event::Plasma => *check = true,
+            Event::Plasma => todo.check = true,
+            Event::Ipc(request, reply) => {
+                let response = match request {
+                    Request::Status => Response::Status(self.status()),
+                    Request::Pause => {
+                        self.paused = true;
+                        log!("paused");
+                        Response::Ok
+                    }
+                    Request::Resume => {
+                        self.paused = false;
+                        todo.force = true;
+                        log!("resumed");
+                        Response::Ok
+                    }
+                    Request::Apply => {
+                        todo.force = true;
+                        Response::Ok
+                    }
+                };
+                let _ = reply.send(response);
+            }
             Event::File(wd, name, mask) => {
                 let name = name.unwrap_or_default();
                 if self.slide_dirs.contains_key(&wd) {
@@ -173,21 +224,42 @@ impl Daemon {
                     if is_image
                         || (mask.contains(EventMask::CREATE) && mask.contains(EventMask::ISDIR))
                     {
-                        *check = true;
+                        todo.check = true;
                     }
-                } else if self.config_dirs.contains_key(&wd) {
+                } else if let Some(dir) = self.config_dirs.get(&wd).cloned() {
                     // kdeglobals: a light/dark switch picks another wallpaper package variant.
                     // appletsrc: wallpaper changed in the settings, which does not always emit
                     // wallpaperChanged (e.g. switching from a slideshow to a single picture).
                     if name == "kdeglobals" || name == APPLETSRC {
-                        *check = true;
+                        todo.check = true;
                     }
+                    let config_dir = self.config_path.as_deref().and_then(Path::parent);
                     let ours = self.config_path.as_deref().and_then(Path::file_name);
-                    if ours.is_some_and(|f| f == name) {
-                        *reload = true;
+                    if config_dir == Some(dir.as_path()) && ours.is_some_and(|f| f == name) {
+                        todo.reload = true;
+                    }
+                    // our config folder was created after we started: watch it now
+                    if let Some(cd) = config_dir.filter(|cd| cd.parent() == Some(dir.as_path()))
+                        && cd.file_name() == Some(name.as_os_str())
+                        && !self.config_dirs.values().any(|d| d == cd)
+                    {
+                        let cd = cd.to_owned();
+                        let mask = WatchMask::CLOSE_WRITE | WatchMask::MOVED_TO | WatchMask::CREATE;
+                        if let Ok(wd) = self.watches.add(&cd, mask) {
+                            self.config_dirs.insert(wd, cd);
+                            todo.reload = true;
+                        }
                     }
                 }
             }
+        }
+    }
+
+    fn status(&self) -> Status {
+        Status {
+            paused: self.paused,
+            mode: self.config.led.mode,
+            ..self.status.clone()
         }
     }
 
@@ -197,6 +269,7 @@ impl Daemon {
             Ok(w) => w,
             Err(e) => return self.fail(format!("cannot ask Plasma for the wallpaper: {e}")),
         };
+        self.status.plugin = wallpaper.plugin.clone();
         self.watch_slides(if wallpaper.is_slideshow() {
             &wallpaper.slide_paths
         } else {
@@ -215,6 +288,7 @@ impl Daemon {
             );
         };
 
+        self.status.image = Some(image.clone());
         let mtime = fs::metadata(&image).and_then(|m| m.modified()).ok();
         let key = format!(
             "{} {mtime:?} {:?} {:?}",
@@ -230,18 +304,31 @@ impl Daemon {
             Ok(e) => e.stops(self.config.led.mode),
             Err(e) => {
                 self.retry = None;
+                self.status.error = Some(format!("{}: {e}", image.display()));
                 return log!("{}: {e}", image.display());
             }
         };
+        let colours: Vec<String> = stops.iter().map(ToString::to_string).collect();
+        self.status.stops = colours.clone();
+        if self.paused {
+            self.last = None; // send on resume
+            return;
+        }
 
         match self.send(&stops) {
-            Ok(n) => {
-                let colours: Vec<String> = stops.iter().map(ToString::to_string).collect();
+            Ok(devices) => {
                 log!(
-                    "{} → {n} device(s) from {}",
+                    "{} → {} device(s) from {}",
                     colours.join(" "),
+                    devices.len(),
                     image.display()
                 );
+                self.status.devices = devices;
+                self.status.error = None;
+                self.status.last_sent = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs());
                 self.last = Some(key);
                 self.retry = None;
             }
@@ -252,7 +339,7 @@ impl Daemon {
         }
     }
 
-    fn send(&self, stops: &[wpc_core::Rgb]) -> wpc_openrgb::Result<usize> {
+    fn send(&self, stops: &[wpc_core::Rgb]) -> wpc_openrgb::Result<Vec<DeviceInfo>> {
         let mut client = Client::connect(
             self.config.openrgb.address.as_str(),
             &self.config.openrgb.client_name,
@@ -262,7 +349,21 @@ impl Daemon {
             let leds = c.paint_calibrated(stops, |zone| self.config.gain(&c.name, zone));
             client.set_leds(c.index, &leds)?;
         }
-        Ok(ctrls.len())
+        Ok(ctrls
+            .iter()
+            .map(|c| DeviceInfo {
+                name: c.name.clone(),
+                kind: c.kind,
+                zones: c
+                    .zones
+                    .iter()
+                    .map(|z| ZoneInfo {
+                        name: z.name.clone(),
+                        leds: z.leds,
+                    })
+                    .collect(),
+            })
+            .collect())
     }
 
     /// Logs and schedules a retry with exponential backoff.
@@ -271,6 +372,7 @@ impl Daemon {
             .retry
             .map_or(RETRY_MIN, |(_, d)| (d * 2).min(RETRY_MAX));
         log!("{msg} (retrying in {}s)", delay.as_secs());
+        self.status.error = Some(msg);
         self.retry = Some((Instant::now() + delay, delay));
     }
 
@@ -338,6 +440,46 @@ fn spawn_dbus_listener(plasma: &Plasma, tx: &Sender<Event>) -> Result<(), wpc_kd
             }
         });
     }
+    Ok(())
+}
+
+/// Answers clients on the socket: one JSON request line in, one JSON response line out.
+fn spawn_ipc_listener(tx: Sender<Event>) -> std::io::Result<()> {
+    let path = ipc::socket_path();
+    let _ = fs::remove_file(&path); // stale socket of a previous run
+    let listener = UnixListener::bind(&path)?;
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+            let mut line = String::new();
+            let Ok(reader) = stream.try_clone() else {
+                continue;
+            };
+            if BufReader::new(reader).read_line(&mut line).is_err() {
+                continue;
+            }
+            let response = match serde_json::from_str::<Request>(&line) {
+                Ok(request) => {
+                    let (reply_tx, reply_rx) = mpsc::channel();
+                    if tx.send(Event::Ipc(request, reply_tx)).is_err() {
+                        return;
+                    }
+                    reply_rx
+                        .recv_timeout(Duration::from_secs(2))
+                        .unwrap_or(Response::Error {
+                            message: "service busy".into(),
+                        })
+                }
+                Err(e) => Response::Error {
+                    message: format!("bad request: {e}"),
+                },
+            };
+            let mut out = serde_json::to_string(&response).unwrap_or_default();
+            out.push('\n');
+            let mut stream = stream;
+            let _ = stream.write_all(out.as_bytes());
+        }
+    });
     Ok(())
 }
 

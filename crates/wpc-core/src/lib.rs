@@ -6,6 +6,7 @@ pub mod arc;
 pub mod color;
 pub mod config;
 pub mod extract;
+pub mod ipc;
 
 pub use color::Rgb;
 pub use config::Config;
