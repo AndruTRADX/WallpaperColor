@@ -90,7 +90,7 @@ WallpaperColor/
 
 Cada fase termina en algo que se puede usar y probar. No se pasa a la siguiente sin cumplir el criterio de salida.
 
-### Fase 0: validar el hardware (sin Rust)
+### Fase 0: validar el hardware (sin Rust) ✅
 
 El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 
@@ -99,15 +99,16 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 3. `tools/orgb-probe.py list` muestra los dispositivos; `tools/orgb-probe.py set ff0000` los pinta. **Tú confirmas mirando los LEDs.**
 4. Toolchain de Rust. ✅ Instalado.
 
-**Criterio de salida:** ves cambiar físicamente la RAM y los ventiladores desde un cliente externo.
+**Criterio de salida:** ves cambiar físicamente la RAM y los ventiladores desde un cliente externo. ✅ Cumplido: rojo en la RAM (2 × 10 LEDs), el AIO y los ventiladores (Commander Core, 61 LEDs).
 
-### Fase 1: núcleo y extracción de color
+### Fase 1: núcleo y extracción de color ✅
 
-- Workspace de Cargo, `wpc-core`, configuración TOML.
-- Portar la extracción de color con tests (imágenes de prueba con color esperado).
-- `wallpapercolor extract <imagen>` imprime el color y muestra una muestra en la terminal.
+- Workspace de Cargo, `wpc-core` (color, configuración TOML, extracción) y `wallpapercolor extract <imagen> [-p]`.
+- Extracción: muestra de 96×96, paleta de 10 colores por *range cut* (corte a la mitad del rango, no de la población), descarte de grises por **croma** (no saturación, que se dispara en colores muy oscuros) y elección del más vivo.
+- El formato de la imagen se detecta por contenido: 37 de los 255 fondos son PNG con extensión `.jpg`.
+- 17 tests (colores, conversión HSV, config, casos límite).
 
-**Criterio de salida:** mismos colores que el prototipo de Python en tus imágenes.
+**Resultado frente al prototipo (24 fondos al azar):** mediana de 5° de diferencia de tono; 22/24 prácticamente iguales; en los 2 restantes Rust acierta y el prototipo no (comprobado viendo las imágenes). 3,4 veces más rápido (0,9 s frente a 3,1 s) y lee los 255 fondos sin fallos.
 
 ### Fase 2: cliente OpenRGB
 

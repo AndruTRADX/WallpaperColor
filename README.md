@@ -7,4 +7,9 @@ slide of a KDE Plasma slideshow), through OpenLinkHub's built-in OpenRGB SDK ser
 - `wallpapercolord`: a minimal background service (no terminal dependencies)
 - `wallpapercolor`: a terminal UI (ratatui) to configure and watch it
 
-Status: planning. See [docs/PLAN.md](docs/PLAN.md).
+Status: phase 1 of [docs/PLAN.md](docs/PLAN.md) done (colour extraction).
+
+```sh
+cargo build --release
+./target/release/wallpapercolor extract -p ~/Pictures/wallpapers/*.png
+```
