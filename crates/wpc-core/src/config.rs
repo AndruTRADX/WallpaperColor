@@ -10,8 +10,25 @@ use std::{fmt, fs, io};
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    pub led: LedConfig,
     pub extract: ExtractConfig,
     pub openrgb: OpenRgbConfig,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    /// Three colours from the picture as a gradient: around each ring, top to bottom on RAM.
+    #[default]
+    Arc,
+    /// The main colour on every LED.
+    Single,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LedConfig {
+    pub mode: Mode,
 }
 
 /// Where to send colours: an OpenRGB SDK server.
@@ -96,6 +113,14 @@ mod tests {
             c.extract.palette_size,
             ExtractConfig::default().palette_size
         );
+    }
+
+    #[test]
+    fn mode_is_arc_by_default_and_parses() {
+        assert_eq!(Config::default().led.mode, Mode::Arc);
+        let c = Config::from_toml("[led]\nmode = \"single\"\n").unwrap();
+        assert_eq!(c.led.mode, Mode::Single);
+        assert!(Config::from_toml("[led]\nmode = \"rainbow\"\n").is_err());
     }
 
     #[test]

@@ -14,6 +14,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 use wire::Reader;
 pub use wpc_core::Rgb;
+use wpc_core::arc::gradient;
 
 /// Highest protocol version this client understands.
 pub const PROTOCOL_VERSION: u32 = 4;
@@ -76,9 +77,27 @@ pub struct Controller {
     pub colors: Vec<Rgb>,
 }
 
+/// OpenRGB device type of RAM modules.
+pub const DEVICE_TYPE_DRAM: i32 = 1;
+
 impl Controller {
     pub fn led_count(&self) -> usize {
         self.colors.len()
+    }
+
+    /// Colours for every LED spreading `stops` as one gradient per zone: top to bottom on RAM,
+    /// a seamless ring elsewhere (fans, pumps and strips tend to be loops). One stop paints
+    /// everything that colour.
+    pub fn paint(&self, stops: &[Rgb]) -> Vec<Rgb> {
+        let ring = self.kind != DEVICE_TYPE_DRAM;
+        let zoned: u32 = self.zones.iter().map(|z| z.leds).sum();
+        if zoned as usize != self.led_count() {
+            return gradient(stops, self.led_count(), ring);
+        }
+        self.zones
+            .iter()
+            .flat_map(|z| gradient(stops, z.leds as usize, ring))
+            .collect()
     }
 }
 

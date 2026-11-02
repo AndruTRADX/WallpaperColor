@@ -1,4 +1,4 @@
-//! Picks one LED-friendly colour from a wallpaper.
+//! Picks LED-friendly colours from a wallpaper: one main colour, plus three for an arc.
 //!
 //! 1. Downscale the picture (only the overall colours matter, and it keeps this fast).
 //! 2. Reduce it to a small palette by repeatedly cutting the colour box with the widest range
@@ -15,6 +15,9 @@
 //! 5. Push it to full brightness and at least `min_saturation`: LEDs make pastel shades look
 //!    washed out, but too high a floor turns pinks into red and beige into orange.
 //!    A picture with no real colour (black and white) gives white.
+//! 6. For the arc, keep taking the next most vivid entries whose hue is at least
+//!    `ARC_MIN_HUE_GAP` away from the ones already taken; when the picture has fewer distinct
+//!    colours, fill in with a lighter and a dimmer shade of the main colour.
 
 use crate::color::{Hsv, Rgb};
 use image::{DynamicImage, imageops::FilterType};
@@ -61,7 +64,22 @@ pub struct Extraction {
     pub picked: Option<Rgb>,
     /// Colour to send to the LEDs.
     pub led: Rgb,
+    /// Three LED colours for an arc; `arc[0] == led`.
+    pub arc: [Rgb; 3],
 }
+
+impl Extraction {
+    /// Gradient stops for `mode`: the three arc colours, or just the main colour.
+    pub fn stops(&self, mode: crate::config::Mode) -> Vec<Rgb> {
+        match mode {
+            crate::config::Mode::Arc => self.arc.to_vec(),
+            crate::config::Mode::Single => vec![self.led],
+        }
+    }
+}
+
+/// Minimum hue difference (degrees) between two arc colours.
+pub const ARC_MIN_HUE_GAP: f32 = 30.0;
 
 #[derive(Debug)]
 pub enum ExtractError {
@@ -113,28 +131,72 @@ pub fn extract(img: &DynamicImage, cfg: &ExtractConfig) -> Result<Extraction, Ex
         .map(|(c, n)| (c, n as f32 / total))
         .collect();
 
-    let best = palette
+    let mut candidates: Vec<(Rgb, Hsv, f32)> = palette
         .iter()
         .map(|&(c, share)| (c, c.to_hsv(), share))
         .filter(|&(_, hsv, share)| {
             share >= cfg.min_share as f32 && hsv.s * hsv.v >= cfg.min_chroma as f32
         })
         .filter(|&(_, hsv, _)| !is_skin(hsv) || hsv.s * hsv.v >= PALE_SKIN_CHROMA)
-        .max_by(|a, b| vividness(a.1, a.2, cfg).total_cmp(&vividness(b.1, b.2, cfg)));
+        .collect();
+    candidates.sort_by(|a, b| vividness(b.1, b.2, cfg).total_cmp(&vividness(a.1, a.2, cfg)));
 
-    let led = match best {
-        Some((_, hsv, _)) => Rgb::from_hsv(Hsv {
+    let led_of = |hsv: Hsv| {
+        Rgb::from_hsv(Hsv {
             h: hsv.h,
             s: hsv.s.max(cfg.min_saturation as f32),
             v: 1.0,
-        }),
-        None => Rgb::WHITE,
+        })
     };
+
+    let Some(&(picked, main, _)) = candidates.first() else {
+        return Ok(Extraction {
+            palette,
+            picked: None,
+            led: Rgb::WHITE,
+            arc: [Rgb::WHITE; 3],
+        });
+    };
+
+    let mut hues: Vec<Hsv> = vec![main];
+    for &(_, hsv, _) in &candidates[1..] {
+        if hues.len() == 3 {
+            break;
+        }
+        if hues
+            .iter()
+            .all(|h| hue_distance(h.h, hsv.h) >= ARC_MIN_HUE_GAP)
+        {
+            hues.push(hsv);
+        }
+    }
+    let led = led_of(main);
+    let mut arc: Vec<Rgb> = hues.into_iter().map(led_of).collect();
+    if arc.len() < 3 {
+        // a lighter shade of the main colour
+        arc.push(Rgb::from_hsv(Hsv {
+            h: main.h,
+            s: 0.35,
+            v: 1.0,
+        }));
+    }
+    if arc.len() < 3 {
+        // and a dimmer one
+        let led_hsv = led.to_hsv();
+        arc.push(Rgb::from_hsv(Hsv { v: 0.45, ..led_hsv }));
+    }
+
     Ok(Extraction {
         palette,
-        picked: best.map(|(c, _, _)| c),
+        picked: Some(picked),
         led,
+        arc: [arc[0], arc[1], arc[2]],
     })
+}
+
+fn hue_distance(a: f32, b: f32) -> f32 {
+    let d = (a - b).rem_euclid(360.0);
+    d.min(360.0 - d)
 }
 
 fn vividness(hsv: Hsv, share: f32, cfg: &ExtractConfig) -> f32 {
@@ -388,6 +450,48 @@ mod tests {
         let e = extract_path(&path, &ExtractConfig::default()).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(e.led, Rgb::new(0, 0, 255));
+    }
+
+    #[test]
+    fn arc_takes_three_distinct_hues() {
+        let img = image_from(|x, _| match x {
+            0..50 => [220, 30, 30],    // red
+            50..60 => [230, 60, 40],   // another red: too close, skipped
+            60..110 => [30, 60, 220],  // blue
+            110..150 => [40, 200, 60], // green
+            _ => [20, 20, 20],
+        });
+        let e = extract(&img, &ExtractConfig::default()).unwrap();
+        assert_eq!(e.arc[0], e.led);
+        let hues: Vec<f32> = e.arc.iter().map(|c| c.to_hsv().h).collect();
+        for i in 0..3 {
+            for j in i + 1..3 {
+                assert!(
+                    hue_distance(hues[i], hues[j]) >= ARC_MIN_HUE_GAP,
+                    "{:?}",
+                    e.arc
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn single_colour_picture_gets_shades_in_the_arc() {
+        let e = extract(&image_from(|_, _| [30, 60, 220]), &ExtractConfig::default()).unwrap();
+        let [a, b, c] = e.arc.map(|c| c.to_hsv());
+        assert!(hue_distance(a.h, b.h) < 5.0 && hue_distance(a.h, c.h) < 5.0);
+        assert!(b.s < a.s, "lighter shade");
+        assert!(c.v < a.v, "dimmer shade");
+    }
+
+    #[test]
+    fn colourless_picture_arc_is_white() {
+        let e = extract(
+            &image_from(|x, _| [(x % 256) as u8; 3]),
+            &ExtractConfig::default(),
+        )
+        .unwrap();
+        assert_eq!(e.arc, [Rgb::WHITE; 3]);
     }
 
     #[test]

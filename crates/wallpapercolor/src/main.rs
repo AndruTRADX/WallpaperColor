@@ -4,6 +4,7 @@ use clap::{Args, Parser, Subcommand};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use wpc_core::config::Mode;
 use wpc_core::{Config, Rgb, extract_path};
 use wpc_openrgb::Client;
 
@@ -45,20 +46,27 @@ enum Command {
     },
     /// List the RGB devices the server exposes (in OpenLinkHub: "OpenRGB Integration" on)
     Devices,
-    /// Paint every exposed device with one colour
+    /// Paint every exposed device with a colour, or three as an arc
     Set(SetArgs),
     /// Print the effective configuration (defaults included) as TOML
     Config,
 }
 
 #[derive(Args)]
-#[group(required = true, multiple = false)]
 struct SetArgs {
-    /// Colour as #rrggbb or rrggbb
-    color: Option<Rgb>,
-    /// Take the colour from this picture instead
+    /// Colour(s) as #rrggbb or rrggbb; up to three with --arc
+    #[arg(required_unless_present = "image", conflicts_with = "image", num_args = 1..=3)]
+    colors: Vec<Rgb>,
+    /// Take the colour(s) from this picture instead
     #[arg(long)]
     image: Option<PathBuf>,
+    /// Spread three colours as a gradient: around each ring (fans, pump), top to bottom on RAM
+    /// (default when the config says mode = "arc")
+    #[arg(long, conflicts_with = "single")]
+    arc: bool,
+    /// One colour on every LED (default when the config says mode = "single")
+    #[arg(long)]
+    single: bool,
 }
 
 fn main() -> ExitCode {
@@ -86,7 +94,17 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             for path in &images {
                 match extract_path(path, &config.extract) {
                     Ok(e) => {
-                        out!("{}{}  {}", swatch(e.led, 6), e.led, path.display());
+                        let arc: String = e.arc.iter().map(|c| swatch(*c, 2)).collect();
+                        out!(
+                            "{}{}  arc {}{} {} {}  {}",
+                            swatch(e.led, 6),
+                            e.led,
+                            arc,
+                            e.arc[0],
+                            e.arc[1],
+                            e.arc[2],
+                            path.display()
+                        );
                         if palette {
                             for (c, share) in &e.palette {
                                 let mark = if Some(*c) == e.picked { "←" } else { "" };
@@ -136,10 +154,15 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             Ok(ExitCode::SUCCESS)
         }
         Command::Set(args) => {
-            let color = match (args.color, args.image) {
-                (Some(c), _) => c,
-                (None, Some(path)) => extract_path(&path, &config.extract)?.led,
-                (None, None) => unreachable!("clap requires one of them"),
+            let mode = match (args.arc, args.single) {
+                (true, _) => Mode::Arc,
+                (_, true) => Mode::Single,
+                _ => config.led.mode,
+            };
+            let stops: Vec<Rgb> = match &args.image {
+                Some(path) => extract_path(path, &config.extract)?.stops(mode),
+                None if mode == Mode::Arc => args.colors.clone(),
+                None => args.colors[..1].to_vec(),
             };
             let mut client = connect(&config)?;
             let ctrls = client.controllers()?;
@@ -148,9 +171,13 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
                     "no devices exposed: turn on \"OpenRGB Integration\" in OpenLinkHub".into(),
                 );
             }
+            let label: Vec<String> = stops
+                .iter()
+                .map(|c| format!("{}{c}", swatch(*c, 2)))
+                .collect();
             for c in &ctrls {
-                client.set_all(c, color)?;
-                out!("{}{color} → [{}] {}", swatch(color, 2), c.index, c.name);
+                client.set_leds(c.index, &c.paint(&stops))?;
+                out!("{} → [{}] {}", label.join(" "), c.index, c.name);
             }
             Ok(ExitCode::SUCCESS)
         }

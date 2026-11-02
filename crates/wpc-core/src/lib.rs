@@ -2,6 +2,7 @@
 //!
 //! Shared by the background service and the terminal client. No terminal or network code here.
 
+pub mod arc;
 pub mod color;
 pub mod config;
 pub mod extract;
