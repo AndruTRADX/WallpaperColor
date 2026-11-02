@@ -12,6 +12,10 @@ the motherboard fade to its colours.
 Written in C++23. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how it works and where
 everything is in the code.
 
+<p align="center">
+  <img src="public/WallpaperColor.gif" alt="The PC's RGB lighting fading to the colours of a new wallpaper">
+</p>
+
 ## Requirements
 
 | What | Why |
@@ -28,7 +32,7 @@ everything is in the code.
 
 1. In `/var/lib/openlinkhub/config.json`, set `"enableOpenRGBTargetServer": true` (the port is
    `"openRGBPort": 6743`), then restart it: `sudo systemctl restart openlinkhub`.
-2. Open the OpenLinkHub web page (by default http://127.0.0.1:27003) and, for **each device**
+2. Open the OpenLinkHub web page (by default <http://127.0.0.1:27003>) and, for **each device**
    you want painted, turn on **OpenRGB Integration**. Devices with it off keep their own
    OpenLinkHub effects and are not touched.
 
