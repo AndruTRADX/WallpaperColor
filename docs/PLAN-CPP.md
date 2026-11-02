@@ -137,6 +137,27 @@ reference until phase 7.
 
 **Exit:** the golden files are committed and an empty `CMakeLists.txt` builds a "hello" binary.
 
+**Done so far (2026-11-02):**
+
+- WIP committed and tagged `rust-final`. It builds. **50/51 Rust tests pass.** The failing one,
+  `settings::tests::edits_keep_comments`, is a real WIP bug: `set_mode` and `set_intensity`
+  drop the trailing comment on the line they rewrite (only `set_gain` keeps it). The C++
+  version does what the test asks for (keeps the comment), so on this point it intentionally
+  differs from the frozen Rust code.
+- `tests/golden/extract.txt`: `extract -p` on all 255 wallpapers (relative names, default config).
+- `tests/golden/config/*.toml` → `*.out`: the `config` output for empty, partial and
+  calibration files, plus the error output for an unknown key and a bad `mode`.
+- `tests/golden/ipc.txt`: the JSON of every request/response, an empty and a full `Status`,
+  and how the service parses odd requests. Made by a throwaway program against the frozen
+  `wpc-core`.
+- `tests/golden/openrgb/`: output and every packet sent for `devices` and 6 `set` scenarios
+  (one colour, arc, single, `--image tests/golden/gradient.png`, calibrated). Recorded with
+  `tools/golden-openrgb.sh` against `tools/fake-openrgb.py`, a fake server laid out like your
+  hardware. Run the same script on the C++ binary and `diff -r` the two folders.
+- `CMakeLists.txt` (C++23, `-ffp-contract=off`, LTO) and a placeholder `src/client/main.cpp`.
+  It compiles with g++ 16.
+- Still to do: install the packages (needs sudo), then `cmake` builds the placeholder.
+
 ### Phase 1: `core`, colour and extraction
 
 - `color`, `arc`, `resize`, `extract`, plus `wallpapercolor extract <img>… [-p]`.

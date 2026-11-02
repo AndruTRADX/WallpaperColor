@@ -1,0 +1,12 @@
+# fans have a weak blue
+[[calibration]]
+device = "COMMANDER Core"
+zone = "Fan"
+gain = [0.72, 0.78, 1.0]
+
+[[calibration]]
+device = "VENGEANCE"
+gain = [1, 0.9, 0.9]
+
+[openrgb]
+address = "192.168.1.5:6742"

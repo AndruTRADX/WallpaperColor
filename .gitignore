@@ -4,3 +4,4 @@ upstream/*/pkg/
 upstream/*/openlinkhub/
 upstream/*/*.pkg.tar.*
 __pycache__/
+/build

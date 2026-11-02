@@ -1,0 +1,6 @@
+wallpapercolor: unknown-key.toml: TOML parse error at line 2, column 1
+  |
+2 | min_saturaton = 0.5
+  | ^^^^^^^^^^^^^
+unknown field `min_saturaton`, expected one of `palette_size`, `sample_size`, `min_saturation`, `min_chroma`, `min_share`, `skin_weight`, `pastel_gain`
+

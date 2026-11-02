@@ -1,0 +1,5 @@
+[extract]
+min_saturation = 0.5
+
+[led]
+mode = "single"
