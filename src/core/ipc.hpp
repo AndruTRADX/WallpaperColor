@@ -4,8 +4,7 @@
 // client writes a JSON Request line, the service answers with a JSON Response line.
 // Settings are not part of it: clients edit the config file and the service reloads it.
 //
-// The JSON is byte-for-byte what the Rust version (serde) wrote: same field names and order,
-// `null` for missing optional values. See tests/golden/ipc.txt.
+// Fields keep a fixed order; missing optional values are `null`.
 
 #pragma once
 

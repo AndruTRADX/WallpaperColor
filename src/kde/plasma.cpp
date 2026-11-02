@@ -1,5 +1,6 @@
 #include "kde/plasma.hpp"
 
+#include <charconv>
 #include <cstdlib>
 #include <fstream>
 #include <map>
@@ -118,7 +119,7 @@ std::optional<fs::path> resolve_image(const fs::path& path, bool dark) {
             if (entry.symlink_status(e).type() != fs::file_type::regular) continue;
             uintmax_t size = entry.file_size(e);
             if (e) size = 0;
-            // On a tie the last one wins, like Rust's max_by_key.
+            // On a tie the last one wins (`>=`).
             if (!biggest || size >= biggest_size) {
                 biggest = entry.path();
                 biggest_size = size;
@@ -149,7 +150,7 @@ bool dark_mode() {
 
 namespace {
 
-/// Rust's str::trim() for ASCII whitespace.
+/// `s` without spaces, tabs and line breaks at both ends.
 std::string_view trim(std::string_view s) {
     const char* space = " \t\n\r\f\v";
     size_t start = s.find_first_not_of(space);
@@ -158,17 +159,12 @@ std::string_view trim(std::string_view s) {
     return s.substr(start, end - start + 1);
 }
 
-/// Rust's str::parse::<u32>(): optional '+', then digits, no overflow.
+/// The whole of `s` as a number, or nullopt.
 std::optional<uint32_t> parse_u32(std::string_view s) {
-    if (s.starts_with('+')) s.remove_prefix(1);
-    if (s.empty()) return std::nullopt;
-    uint64_t v = 0;
-    for (char c : s) {
-        if (c < '0' || c > '9') return std::nullopt;
-        v = v * 10 + static_cast<uint64_t>(c - '0');
-        if (v > 0xFFFFFFFFu) return std::nullopt;
-    }
-    return static_cast<uint32_t>(v);
+    uint32_t v = 0;
+    auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+    if (ec != std::errc() || end != s.data() + s.size()) return std::nullopt;
+    return v;
 }
 
 }  // namespace

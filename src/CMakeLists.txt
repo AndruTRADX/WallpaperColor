@@ -1,6 +1,5 @@
-# Libraries (one per Rust crate) and the two programs.
-# Rule kept from the Rust version: the service never links the terminal UI, and `core` never
-# talks to OpenRGB or D-Bus.
+# Libraries and the two programs.
+# The service never links the terminal UI, and `core` never talks to OpenRGB or D-Bus.
 
 # Sockets, file descriptors, UTF-8 helpers.
 add_library(wpc_util STATIC
@@ -10,7 +9,7 @@ add_library(wpc_util STATIC
 )
 target_include_directories(wpc_util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-# Colour types, extraction, config and the IPC protocol (wpc-core).
+# Colour types, extraction, config and the IPC protocol.
 add_library(wpc_core STATIC
   core/color.cpp
   core/arc.cpp
@@ -23,11 +22,11 @@ target_link_libraries(wpc_core
   PUBLIC wpc_util
   PRIVATE PkgConfig::WEBP tomlplusplus::tomlplusplus nlohmann_json::nlohmann_json)
 
-# OpenRGB SDK client (wpc-openrgb).
+# OpenRGB SDK client.
 add_library(wpc_openrgb STATIC openrgb/client.cpp)
 target_link_libraries(wpc_openrgb PUBLIC wpc_core)
 
-# KDE Plasma wallpaper source over D-Bus (wpc-kde).
+# KDE Plasma wallpaper source over D-Bus.
 add_library(wpc_kde STATIC kde/plasma.cpp)
 target_link_libraries(wpc_kde PUBLIC wpc_core PRIVATE SDBusCpp::sdbus-c++)
 

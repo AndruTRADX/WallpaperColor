@@ -46,7 +46,7 @@ TEST_CASE("missing file gives defaults") {
     CHECK(Config::load("/nonexistent/wallpapercolor.toml") == Config{});
 }
 
-TEST_CASE("wrong types are rejected like serde does") {
+TEST_CASE("wrong types are rejected") {
     CHECK_THROWS_AS(Config::from_toml("[extract]\npalette_size = 10.5\n"), Error);
     CHECK_THROWS_AS(Config::from_toml("[extract]\npalette_size = -1\n"), Error);
     CHECK_THROWS_AS(Config::from_toml("[[calibration]]\ndevice = \"x\"\ngain = [1, 1]\n"), Error);

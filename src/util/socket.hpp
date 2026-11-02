@@ -1,5 +1,5 @@
 // Small RAII wrappers over POSIX sockets: TCP (OpenRGB) and Unix sockets (service IPC).
-// Every failure throws wpc::Error worded like Rust's io::Error.
+// Every failure throws wpc::Error.
 
 #pragma once
 

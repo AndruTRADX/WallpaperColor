@@ -30,10 +30,12 @@ TEST_CASE("hsv values") {
     CHECK(Rgb{128, 128, 128}.to_hsv().s == 0.0f);
 }
 
-TEST_CASE("rust quirks kept on purpose") {
-    // u8::from_str_radix accepts "+f", so Rust reads "#+f+f+f" as #0f0f0f.
-    CHECK(Rgb::parse("#+f+f+f") == Rgb{15, 15, 15});
-    CHECK(total_less(-0.0f, 0.0f));
-    CHECK_FALSE(total_less(0.0f, -0.0f));
+TEST_CASE("rem_euclid is never negative") {
     CHECK(rem_euclid(-30.0f, 360.0f) == 330.0f);
+    CHECK(rem_euclid(390.0f, 360.0f) == 30.0f);
+}
+
+TEST_CASE("only hex digits") {
+    CHECK_FALSE(Rgb::parse("#+f+f+f"));
+    CHECK_FALSE(Rgb::parse("#ff00é"));
 }

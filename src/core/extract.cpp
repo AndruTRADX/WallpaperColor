@@ -58,7 +58,7 @@ Widest widest_channel(const std::vector<Pixel>& pixels) {
             hi[c] = std::max(hi[c], p[c]);
         }
     }
-    // On a tie the *last* channel wins (Rust's max_by_key), hence `>=`.
+    // On a tie the last channel wins (`>=`).
     Widest best{0, lo[0], hi[0]};
     int best_range = -1;
     for (int c = 0; c < 3; ++c) {
@@ -99,8 +99,7 @@ std::vector<PaletteCount> range_cut(std::vector<Pixel> pixels, size_t n) {
         if (!found) break;  // every box is a single colour
         uint8_t mid = static_cast<uint8_t>(best.lo + (best.hi - best.lo) / 2);
 
-        // Take the box out the way Rust's swap_remove does (the last box moves into its
-        // place): the order of the boxes decides which of two equal boxes is listed first.
+        // Take the box out by moving the last box into its place (cheaper than erasing).
         std::vector<Pixel> box = std::move(boxes[best_box]);
         boxes[best_box] = std::move(boxes.back());
         boxes.pop_back();
@@ -173,8 +172,7 @@ Extraction extract(const Image& image, const ExtractConfig& config) {
     // Most vivid first (stable: equally vivid entries keep the palette order).
     std::stable_sort(candidates.begin(), candidates.end(),
                      [&](const Candidate& a, const Candidate& b) {
-                         return total_less(vividness(b.hsv, b.share, config),
-                                           vividness(a.hsv, a.share, config));
+                         return vividness(a.hsv, a.share, config) > vividness(b.hsv, b.share, config);
                      });
 
     if (candidates.empty()) {  // a colourless picture: white
@@ -199,7 +197,7 @@ Extraction extract(const Image& image, const ExtractConfig& config) {
         accents.push_back(Accent{c.hsv, score});
     }
     std::stable_sort(accents.begin(), accents.end(), [](const Accent& a, const Accent& b) {
-        return total_less(b.score, a.score);
+        return a.score > b.score;
     });
 
     // The main colour, then accents whose hue is far enough from every hue already taken.

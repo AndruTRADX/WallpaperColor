@@ -78,11 +78,7 @@ Rgb scale(Rgb c, std::array<float, 3> gain) {
     return Rgb{s(c.r, gain[0]), s(c.g, gain[1]), s(c.b, gain[2])};
 }
 
-std::vector<Rgb> Controller::paint(const std::vector<Rgb>& stops) const {
-    return paint_calibrated(stops, [](std::string_view) { return std::array<float, 3>{1, 1, 1}; });
-}
-
-std::vector<Rgb> Controller::paint_calibrated(const std::vector<Rgb>& stops, const GainFn& gain) const {
+std::vector<Rgb> Controller::paint(const std::vector<Rgb>& stops, const GainFn& gain) const {
     bool ring = kind != DEVICE_TYPE_DRAM;
     uint32_t zoned = 0;
     for (const Zone& z : zones) zoned += z.leds;
@@ -215,10 +211,6 @@ void Client::set_leds(uint32_t index, const std::vector<Rgb>& colors) {
     put_u16(payload, static_cast<uint16_t>(colors.size()));
     for (Rgb c : colors) payload.insert(payload.end(), {c.r, c.g, c.b, 0});
     send(index, packet::UPDATE_LEDS, payload);
-}
-
-void Client::set_all(const Controller& controller, Rgb color) {
-    set_leds(controller.index, std::vector<Rgb>(controller.led_count(), color));
 }
 
 void Client::send(uint32_t device, uint32_t id, std::span<const uint8_t> payload) {

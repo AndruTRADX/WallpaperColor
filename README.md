@@ -1,14 +1,14 @@
-# WallpaperColor
+# Wallpaper Color - KDE Plasma
 
-Paints your PC's RGB components with the colour of the wallpaper on screen (including the current
+Paints your PC's RGB components with the color of the wallpaper on screen (including the current
 slide of a KDE Plasma slideshow), through OpenLinkHub's built-in OpenRGB SDK server
 (stock package; turn on "OpenRGB Integration" per device in its WebUI).
 
 - `wallpapercolord`: a minimal background service (no terminal dependencies)
 - `wallpapercolor`: a terminal UI (FTXUI) to configure and watch it, plus commands
 
-Written in C++23 ([docs/PLAN-CPP.md](docs/PLAN-CPP.md) explains the rewrite from Rust; the
-last Rust version is the git tag `rust-final`).
+Written in C++23. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how it works and
+where everything is.
 
 ## Install
 

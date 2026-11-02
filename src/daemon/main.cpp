@@ -157,7 +157,7 @@ void start_ipc_listener(Channel<Event>& events) {
             try {
                 out = ipc::to_json(response);
             } catch (const std::exception&) {
-                out = "";  // not valid UTF-8: the Rust version sent an empty line too
+                out = "";  // a path that is not valid UTF-8: send an empty line
             }
             try {
                 write_all(client, out + "\n");
@@ -242,7 +242,7 @@ Daemon::Daemon(std::optional<fs::path> config_path)
         }
     }
 
-    log("wallpapercolord {}: mode {}, sending to {}", WPC_VERSION, mode_label(config_.led.mode),
+    log("wallpapercolord {}: mode {}, sending to {}", WPC_VERSION, mode_name(config_.led.mode),
         config_.openrgb.address);
     status_.version = WPC_VERSION;
 }
@@ -269,7 +269,7 @@ void Daemon::run() {
         }
         if (todo.reload) {
             config_ = load_config(config_path_);
-            log("config reloaded: mode {}", mode_label(config_.led.mode));
+            log("config reloaded: mode {}", mode_name(config_.led.mode));
         }
         sync(todo.reload || todo.force);
     }
@@ -309,8 +309,8 @@ ipc::Response Daemon::answer(ipc::Request request, Todo& todo) {
 void Daemon::on_file(const FileEvent& e, Todo& todo) {
     if (auto slide_dir = slide_dirs_.find(e.watch); slide_dir != slide_dirs_.end()) {
         // Opening the picture on screen is not a new slide: it is usually us, reading it to take
-        // its colours. Without this, each retry while OpenLinkHub is down triggered the next one
-        // 0.8 s later instead of backing off (a bug the Rust version had).
+        // its colours. Without this, each retry while OpenLinkHub is down would trigger the next
+        // one 0.8 s later instead of backing off.
         bool opened_current = (e.mask & IN_OPEN) && status_.image == slide_dir->second / e.name;
         if (opened_current) return;
 
@@ -420,7 +420,7 @@ std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops) {
     openrgb::Client client = openrgb::Client::connect(config_.openrgb.address, config_.openrgb.client_name);
     std::vector<openrgb::Controller> controllers = client.controllers();
     for (const openrgb::Controller& c : controllers) {
-        std::vector<Rgb> leds = c.paint_calibrated(stops, [&](std::string_view zone) {
+        std::vector<Rgb> leds = c.paint(stops, [&](std::string_view zone) {
             return config_.gain(c.name, zone);
         });
         client.set_leds(c.index, leds);

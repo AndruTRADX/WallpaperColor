@@ -10,8 +10,8 @@
 
 #include <webp/decode.h>
 
-// stb_image decodes JPEG, PNG, GIF and BMP: the formats the Rust version enabled
-// (WebP goes through libwebp below). Nothing else is compiled in.
+// stb_image decodes JPEG, PNG, GIF and BMP (WebP goes through libwebp below). Other formats
+// are left out.
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
@@ -54,7 +54,7 @@ static Image decode_with_stb(const std::vector<unsigned char>& data) {
     int size = static_cast<int>(data.size());
     Image image;
 
-    // 16-bit PNGs stay 16-bit until after the resize, like in the Rust version.
+    // 16-bit PNGs stay 16-bit until after the resize, which is more precise.
     if (stbi_is_16_bit_from_memory(data.data(), size)) {
         std::unique_ptr<stbi_us, decltype(&stbi_image_free)> pixels(
             stbi_load_16_from_memory(data.data(), size, &width, &height, &channels_in_file, 3),
@@ -80,9 +80,10 @@ Image load_image(const std::filesystem::path& path) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Resize: port of image 0.25.10, src/imageops/sample.rs (`resize`, `vertical_sample`,
-// `horizontal_sample` and `triangle_kernel`). Keep the order of every float operation: the
-// result must match the Rust version bit for bit.
+// Resize: a separable triangle filter. First every column is resampled to the new height
+// (kept as unrounded floats), then every row to the new width. Each output pixel is the
+// weighted average of the source pixels under a triangle centred on it, as wide as one output
+// pixel on each side when shrinking.
 
 static float triangle_kernel(float x) {
     return (std::abs(x) < 1.0f) ? 1.0f - std::abs(x) : 0.0f;
@@ -125,7 +126,7 @@ static Taps taps_for(uint32_t out, uint32_t in_size, uint32_t out_size) {
     return taps;
 }
 
-/// image 0.25 `FromPrimitive<u16> for u8`: round(c * 255 / 65535).
+/// A 16-bit channel value in 8 bits, rounded: round(c * 255 / 65535).
 static uint8_t u16_to_u8(float value) {
     return static_cast<uint8_t>((static_cast<uint32_t>(value) + 128) / 257);
 }
@@ -172,7 +173,7 @@ std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Image& image, uint32_t 
         }
     }
 
-    // 3. To 8 bits per channel (`to_rgb8()`).
+    // 3. To 8 bits per channel.
     std::vector<std::array<uint8_t, 3>> pixels(static_cast<size_t>(width) * height);
     for (size_t p = 0; p < pixels.size(); ++p) {
         for (int c = 0; c < 3; ++c) {

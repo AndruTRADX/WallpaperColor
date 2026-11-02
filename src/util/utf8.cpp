@@ -6,7 +6,7 @@ namespace wpc {
 
 /// Length of the valid UTF-8 sequence at the start of `s`, or 0 if it is invalid there.
 /// When it is invalid, `bad` is how many bytes make up the invalid part (at least 1): the
-/// "maximal subpart" rule Rust follows, so a cut-off sequence gives a single U+FFFD.
+/// "maximal subpart" rule of the Unicode standard, so a cut-off sequence gives a single U+FFFD.
 static size_t valid_sequence(std::string_view s, size_t& bad) {
     auto byte = [&](size_t i) { return static_cast<uint8_t>(s[i]); };
     uint8_t first = byte(0);
@@ -55,16 +55,6 @@ std::string utf8_lossy(std::string_view bytes) {
         }
     }
     return out;
-}
-
-bool is_valid_utf8(std::string_view text) {
-    while (!text.empty()) {
-        size_t bad = 1;
-        size_t n = valid_sequence(text, bad);
-        if (n == 0) return false;
-        text.remove_prefix(n);
-    }
-    return true;
 }
 
 }  // namespace wpc

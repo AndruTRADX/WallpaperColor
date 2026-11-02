@@ -11,7 +11,6 @@ const char* const USER =
     "gain = [0.5, 0.5 ,1.0]    # red, green, blue\n";
 }
 
-// The Rust test that the frozen WIP failed (it lost "# gradient" and "# intensity").
 TEST_CASE("edits keep comments") {
     Settings s = Settings::from_text(USER);
     CHECK(s.set_mode(Mode::Single));

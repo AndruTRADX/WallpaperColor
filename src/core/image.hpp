@@ -1,10 +1,7 @@
 // Decoded pictures and the resize used before colour extraction.
 //
 // Pixels are kept as decoded: one byte per channel, or two for 16-bit PNGs. Only red, green
-// and blue are kept: alpha is
-// dropped and grey is copied to all three channels, which is what the Rust version's
-// `to_rgb8()` does at the end (the resize treats every channel on its own, so dropping
-// alpha first gives the same pixels).
+// and blue are kept: alpha is dropped and grey is copied to all three channels.
 
 #pragma once
 
@@ -34,9 +31,8 @@ struct Image {
 /// content, not its extension (wallpapers are often PNGs named `.jpg`). Throws wpc::Error.
 Image load_image(const std::filesystem::path& path);
 
-/// Resizes to exactly `width` × `height` with a triangle filter, then converts to 8 bits.
-/// A line-by-line port of `DynamicImage::resize_exact(.., FilterType::Triangle)` followed by
-/// `to_rgb8()` from the Rust `image` crate 0.25, so the pixels come out identical.
+/// Resizes to exactly `width` × `height` with a triangle (linear) filter, then converts to
+/// 8 bits per channel.
 std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Image& image, uint32_t width,
                                                    uint32_t height);
 

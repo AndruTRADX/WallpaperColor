@@ -131,9 +131,7 @@ void App::refresh() {
             status_ = r.status;
         } else {
             status_.reset();
-            status_error_ = r.kind == ipc::Response::Kind::Ok
-                                ? "unexpected answer: Ok"
-                                : std::format("unexpected answer: Error {{ message: \"{}\" }}", r.message);
+            status_error_ = r.kind == ipc::Response::Kind::Error ? r.message : "the service gave no status";
         }
     } catch (const Error& e) {
         status_.reset();

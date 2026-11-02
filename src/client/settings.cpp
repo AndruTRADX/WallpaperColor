@@ -267,7 +267,7 @@ bool Settings::set_gain(size_t index, int channel, double value) {
         i = value_last_line(lines_, i, k->value_start);
         if (in_entry) last_key = i;
     }
-    if (!header) return true;  // no such entry: ignored, like the Rust version
+    if (!header) return true;  // no such entry: nothing to change
 
     std::vector<double> gain;
     if (gain_key) {

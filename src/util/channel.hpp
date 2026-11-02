@@ -1,5 +1,5 @@
-// A queue that threads use to hand values to each other, like Rust's std::sync::mpsc channel:
-// any thread can send(); one thread receives, sleeping until something arrives.
+// A queue that threads use to hand values to each other: any thread can send(); one thread
+// receives, sleeping until something arrives.
 
 #pragma once
 

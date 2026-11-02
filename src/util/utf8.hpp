@@ -7,11 +7,8 @@
 
 namespace wpc {
 
-/// Rust's String::from_utf8_lossy: valid UTF-8 is kept, every invalid sequence becomes
-/// U+FFFD (the "replacement character", shown as �).
+/// Valid UTF-8 is kept, every invalid sequence becomes U+FFFD (the "replacement character",
+/// shown as �). Device names from the OpenRGB server go through this.
 std::string utf8_lossy(std::string_view bytes);
-
-/// Whether `text` is valid UTF-8.
-bool is_valid_utf8(std::string_view text);
 
 }  // namespace wpc

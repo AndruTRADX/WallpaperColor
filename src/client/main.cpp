@@ -55,16 +55,6 @@ std::string join(const std::vector<std::string>& items, std::string_view separat
     return out;
 }
 
-/// A response as the Rust version printed it in "unexpected answer: ..." messages.
-std::string describe(const ipc::Response& r) {
-    switch (r.kind) {
-        case ipc::Response::Kind::Ok: return "Ok";
-        case ipc::Response::Kind::Error: return std::format("Error {{ message: \"{}\" }}", r.message);
-        case ipc::Response::Kind::Status: return "Status(..)";
-    }
-    return "?";
-}
-
 /// Asks the service; a failure means it is not running.
 ipc::Response call_service(ipc::Request request) {
     try {
@@ -91,11 +81,10 @@ openrgb::Client connect(const Config& config) {
 
 int run_status() {
     ipc::Response response = call_service(ipc::Request::Status);
-    if (response.kind != ipc::Response::Kind::Status) {
-        throw Error("unexpected answer: " + describe(response));
-    }
+    if (response.kind == ipc::Response::Kind::Error) throw Error(response.message);
+    if (response.kind != ipc::Response::Kind::Status) throw Error("the service gave no status");
     const ipc::Status& s = response.status;
-    out(std::format("{} v{}  mode {}", s.paused ? "paused" : "running", s.version, mode_label(s.mode)));
+    out(std::format("{} v{}  mode {}", s.paused ? "paused" : "running", s.version, mode_name(s.mode)));
     out(std::format("wallpaper  {} ({})", s.image ? s.image->string() : "—", s.plugin));
     std::vector<std::string> stops;
     for (const std::string& hex : s.stops) {
@@ -185,7 +174,7 @@ int run_set(const Config& config, const SetArgs& args) {
     std::vector<std::string> label;
     for (Rgb c : stops) label.push_back(swatch(c, 2) + c.hex());
     for (const openrgb::Controller& c : controllers) {
-        std::vector<Rgb> leds = c.paint_calibrated(stops, [&](std::string_view zone) {
+        std::vector<Rgb> leds = c.paint(stops, [&](std::string_view zone) {
             return config.gain(c.name, zone);
         });
         client.set_leds(c.index, leds);
@@ -215,7 +204,7 @@ int main(int argc, char** argv) {
     CLI::App app{"Paint your RGB hardware with the wallpaper colour", "wallpapercolor"};
     app.set_version_flag("-V,--version", std::string("wallpapercolor ") + WPC_VERSION);
     app.require_subcommand(0, 1);
-    app.fallthrough();  // --config also works after the subcommand, like clap's `global`
+    app.fallthrough();  // --config also works after the subcommand
 
     std::optional<fs::path> config_option;
     app.add_option("--config", config_option,
@@ -267,7 +256,7 @@ int main(int argc, char** argv) {
         }
     } catch (const CLI::ParseError& e) {
         int code = app.exit(e);
-        return code == 0 ? 0 : 2;  // usage errors exit with 2, like clap
+        return code == 0 ? 0 : 2;  // usage errors exit with 2
     }
 
     try {

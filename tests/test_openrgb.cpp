@@ -192,7 +192,7 @@ TEST_CASE("calibration scales only the matching zones") {
     FakeServer server(devices(), 4);
     Client c = Client::connect(server.address(), "test");
     Controller cc = c.controller(1);
-    std::vector<Rgb> leds = cc.paint_calibrated({WHITE}, [](std::string_view zone) {
+    std::vector<Rgb> leds = cc.paint({WHITE}, [](std::string_view zone) {
         return zone.starts_with("Fan") ? std::array<float, 3>{0.72f, 0.78f, 1.0f}
                                        : std::array<float, 3>{1, 1, 1};
     });
@@ -211,7 +211,7 @@ TEST_CASE("sends client name and led colours") {
     {
         Client c = Client::connect(server.address(), "WallpaperColor");
         Controller ctrl = c.controller(0);
-        c.set_all(ctrl, Rgb{255, 0, 0});
+        c.set_leds(ctrl.index, std::vector<Rgb>(ctrl.led_count(), Rgb{255, 0, 0}));
     }
     std::vector<Received> packets = server.received();
 

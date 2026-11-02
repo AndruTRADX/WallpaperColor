@@ -91,7 +91,7 @@ std::string to_json(const Response& response) {
             j.update(status_fields(response.status));
             break;
     }
-    return j.dump();  // throws on invalid UTF-8, like serde_json would refuse it
+    return j.dump();  // throws on invalid UTF-8
 }
 
 Request request_from_json(std::string_view line) {

@@ -64,12 +64,9 @@ struct Controller {
 
     /// Colours for every LED spreading `stops` as one gradient per zone: top to bottom on RAM,
     /// a seamless ring elsewhere (fans, pumps and strips tend to be loops). One stop paints
-    /// everything that colour.
-    std::vector<Rgb> paint(const std::vector<Rgb>& stops) const;
-
-    /// Like paint(), then scales each zone's red, green and blue by `gain(zone name)` to
-    /// correct LEDs that render colours off.
-    std::vector<Rgb> paint_calibrated(const std::vector<Rgb>& stops, const GainFn& gain) const;
+    /// everything that colour. Each zone's red, green and blue are then scaled by
+    /// `gain(zone name)` to correct LEDs that render colours off.
+    std::vector<Rgb> paint(const std::vector<Rgb>& stops, const GainFn& gain) const;
 };
 
 /// `c` with each channel multiplied by its gain.
@@ -93,9 +90,6 @@ public:
     /// Sets every LED of controller `index`, in LED order. `colors` must not be longer than
     /// the controller's LED count.
     void set_leds(uint32_t index, const std::vector<Rgb>& colors);
-
-    /// Paints every LED of `controller` with one colour.
-    void set_all(const Controller& controller, Rgb color);
 
 private:
     explicit Client(Fd socket) : socket_(std::move(socket)) {}

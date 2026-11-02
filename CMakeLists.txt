@@ -1,4 +1,4 @@
-# WallpaperColor, C++ version. See docs/PLAN-CPP.md.
+# WallpaperColor. See README.md and docs/ARCHITECTURE.md.
 #   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build && ctest --test-dir build
 cmake_minimum_required(VERSION 3.28)
@@ -25,13 +25,8 @@ FetchContent_Declare(ftxui
   GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(ftxui)
 
-add_compile_options(
-  -Wall -Wextra -Wpedantic
-  # Colour maths must give the same bits as the Rust version: no fused multiply-add
-  # (a*b+c in one instruction rounds differently) and never -ffast-math.
-  -ffp-contract=off
-)
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)   # LTO, like the Rust release profile
+add_compile_options(-Wall -Wextra -Wpedantic)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)   # link-time optimisation: smaller, faster
 
 # Version for --version and the IPC status, from project() above.
 add_compile_definitions(WPC_VERSION="${PROJECT_VERSION}")

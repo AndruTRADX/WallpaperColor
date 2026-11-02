@@ -1,7 +1,6 @@
 #include "core/color.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <format>
 
@@ -62,11 +61,6 @@ std::optional<uint8_t> parse_hex_byte(char a, char b) {
         if (c >= 'A' && c <= 'F') return c - 'A' + 10;
         return -1;
     };
-    if (a == '+') {
-        int low = digit(b);
-        if (low < 0) return std::nullopt;
-        return static_cast<uint8_t>(low);
-    }
     int high = digit(a);
     int low = digit(b);
     if (high < 0 || low < 0) return std::nullopt;
@@ -77,9 +71,6 @@ std::optional<Rgb> Rgb::parse(std::string_view text) {
     std::string_view hex = text;
     if (hex.starts_with('#')) hex.remove_prefix(1);
     if (hex.size() != 6) return std::nullopt;
-    for (char c : hex) {
-        if (static_cast<unsigned char>(c) >= 0x80) return std::nullopt;  // not ASCII
-    }
     auto r = parse_hex_byte(hex[0], hex[1]);
     auto g = parse_hex_byte(hex[2], hex[3]);
     auto b = parse_hex_byte(hex[4], hex[5]);
@@ -94,16 +85,6 @@ std::string invalid_colour_message(std::string_view text) {
 float rem_euclid(float a, float b) {
     float r = std::fmod(a, b);
     return (r < 0.0f) ? r + std::abs(b) : r;
-}
-
-bool total_less(float a, float b) {
-    // Same trick as Rust's total_cmp: flip the bits of negative numbers so that the integer
-    // order of the bit patterns is the float order (with -0.0 before +0.0).
-    auto key = [](float f) {
-        int32_t bits = std::bit_cast<int32_t>(f);
-        return bits ^ static_cast<int32_t>(static_cast<uint32_t>(bits >> 31) >> 1);
-    };
-    return key(a) < key(b);
 }
 
 }  // namespace wpc

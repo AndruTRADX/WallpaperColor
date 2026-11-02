@@ -79,10 +79,7 @@ std::string toml_float(double value);
 /// A TOML string: "text", with quotes, backslashes and control characters escaped.
 std::string toml_string(std::string_view text);
 
-/// "arc" / "single", as written in the config file and sent over IPC.
+/// "arc" / "single", as written in the config file.
 std::string_view mode_name(Mode mode);
-
-/// "Arc" / "Single", as the service writes it in its log.
-std::string_view mode_label(Mode mode);
 
 }  // namespace wpc

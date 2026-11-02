@@ -20,10 +20,6 @@ std::string_view mode_name(Mode mode) {
     return mode == Mode::Arc ? "arc" : "single";
 }
 
-std::string_view mode_label(Mode mode) {
-    return mode == Mode::Arc ? "Arc" : "Single";
-}
-
 // ---------------------------------------------------------------------------------------------
 // Matching calibrations
 
@@ -85,8 +81,8 @@ Config Config::load(const std::filesystem::path& path) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Parsing. toml++ reads the file; the checks below add what the Rust version got from serde:
-// unknown keys and wrong types are errors, with messages worded the same way.
+// Parsing. toml++ reads the file; the checks below make unknown keys and wrong types errors,
+// so a typo is reported instead of silently doing nothing.
 
 namespace {
 
@@ -96,7 +92,7 @@ namespace {
                             where.begin.column, message));
 }
 
-/// "expected one of `a`, `b`, `c`" like serde words it.
+/// "expected one of `a`, `b`, `c`".
 std::string expected_list(const std::vector<std::string_view>& names) {
     auto quoted = [](std::string_view n) { return std::format("`{}`", n); };
     if (names.empty()) return "there are no fields";
@@ -232,7 +228,7 @@ void check_toml(std::string_view text) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Writing, in the same layout as the Rust version (toml::to_string_pretty).
+// Writing
 
 /// Shortest form that reads back the same, never an exponent, always with a decimal point
 /// (0.7, 1.0, 100000000000000000000.0).

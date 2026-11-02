@@ -43,7 +43,7 @@ int Fd::release() {
 // ---------------------------------------------------------------------------------------------
 // TCP
 
-/// Splits "host:port" / "[::1]:port" like Rust's ToSocketAddrs for &str.
+/// Splits "host:port" or "[::1]:port" into host and port.
 static std::pair<std::string, std::string> split_host_port(std::string_view address) {
     size_t colon = address.rfind(':');
     if (colon == std::string_view::npos) throw Error("invalid socket address");
@@ -70,7 +70,7 @@ Fd tcp_connect(std::string_view address, std::chrono::milliseconds timeout) {
     std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> list(found, &freeaddrinfo);
     if (!found) throw Error("OpenRGB protocol error: no address to connect to");
 
-    // Like Rust's connect_timeout: only the first address is tried.
+    // Only the first address is tried.
     Fd fd(::socket(found->ai_family, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
     if (!fd.valid()) fail_errno();
 
