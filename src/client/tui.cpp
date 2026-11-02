@@ -5,6 +5,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <format>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -84,13 +85,15 @@ ui::Color to_color(Rgb c) {
     return ui::Color::RGB(c.r, c.g, c.b);
 }
 
-/// "███████░░░░" showing where `v` is between `min` and `max`, over 20 cells.
-std::string bar(double v, double min, double max) {
+/// A thin bar "━━━━━━────" showing where `v` is between `min` and `max`, over 20 cells:
+/// the filled part in `colour`, the rest dimmed.
+ui::Element bar(double v, double min, double max, ui::Color colour) {
     double t = (max > min) ? (v - min) / (max - min) : 0.0;
     int filled = static_cast<int>(std::round(std::clamp(t, 0.0, 1.0) * 20.0));
-    std::string out;
-    for (int i = 0; i < 20; ++i) out += (i < filled) ? "█" : "░";
-    return out;
+    std::string done;
+    std::string rest;
+    for (int i = 0; i < 20; ++i) (i < filled ? done : rest) += (i < filled) ? "━" : "─";
+    return ui::hbox({ui::text(done) | ui::color(colour), ui::text(rest) | ui::dim});
 }
 
 /// A key name in the help line.
@@ -376,9 +379,9 @@ ui::Element App::draw() {
     return ui::vbox({
         draw_header(),
         draw_devices(),
-        panel(" Settings ", draw_settings()) | ui::flex,
-        ui::text(message_) | ui::italic,
-        help,
+        panel(" Settings ", draw_settings()) | ui::flex_shrink,  // shrinks (and scrolls) only if needed
+        ui::filler(),
+        ui::hbox({help, ui::filler(), ui::text(message_) | ui::italic}),
     });
 }
 
@@ -423,18 +426,31 @@ ui::Element App::draw_devices() const {
         lines.push_back(ui::text("no devices yet: in OpenLinkHub, turn on \"OpenRGB Integration\"") | ui::dim);
     }
     Painter painter(stops(), config_.led.mode, config_);
+    std::map<std::string, int> seen;  // devices with the same name are numbered: "VENGEANCE RGB 2"
     for (const ipc::DeviceInfo& d : devices()) {
-        lines.push_back(ui::text(d.name) | ui::bold);
-        for (const ipc::ZoneInfo& z : d.zones) {
-            bool ring = d.kind != openrgb::DEVICE_TYPE_DRAM;
-            ui::Elements row = {ui::text(std::format("  {:<26.26} {:>3} ", z.name, z.leds))};
+        long same = std::count_if(devices().begin(), devices().end(),
+                                  [&](const ipc::DeviceInfo& other) { return other.name == d.name; });
+        std::string title = same > 1 ? std::format("{} {}", d.name, ++seen[d.name]) : d.name;
+        bool ring = d.kind != openrgb::DEVICE_TYPE_DRAM;
+
+        // One row of LEDs: the label, the count, the colours, and whether it is calibrated.
+        auto leds_row = [&](ui::Element label, const ipc::ZoneInfo& z) {
+            ui::Elements row = {label, ui::text(std::format(" {:>3} ", z.leds))};
             for (Rgb c : painter.zone(d.name, z.name, z.leds, ring)) {
                 row.push_back(ui::text("██") | ui::color(to_color(c)));
             }
             if (config_.gain(d.name, z.name) != std::array<float, 3>{1, 1, 1}) {
                 row.push_back(ui::text(" calibrated") | ui::dim);
             }
-            lines.push_back(ui::hbox(std::move(row)));
+            return ui::hbox(std::move(row));
+        };
+        if (d.zones.size() == 1) {  // a device with one zone (RAM): a single line
+            lines.push_back(leds_row(ui::text(std::format("{:<28.28}", title)) | ui::bold, d.zones[0]));
+            continue;
+        }
+        lines.push_back(ui::text(title) | ui::bold);
+        for (const ipc::ZoneInfo& z : d.zones) {
+            lines.push_back(leds_row(ui::text(std::format("  {:<26.26}", z.name)), z));
         }
     }
     return panel(" Devices ", ui::vbox(std::move(lines)));
@@ -459,12 +475,12 @@ ui::Element App::draw_settings() {
 
 ui::Element App::draw_item(const Item& item, bool selected) {
     std::string label;
-    std::string value;
+    ui::Element value;
     std::string hint;
     switch (item.kind) {
         case Item::Kind::Mode:
             label = "Mode";
-            value = std::string(mode_description(config_.led.mode));
+            value = ui::text(std::string(mode_description(config_.led.mode)));
             break;
         case Item::Kind::Number: {
             const NumberSetting& n = NUMBERS[item.index];
@@ -472,15 +488,16 @@ ui::Element App::draw_item(const Item& item, bool selected) {
             label = n.label;
             std::string number = (n.decimals < 0) ? std::format("{}", std::lround(v))
                                                   : std::format("{:.{}f}", v, n.decimals);
-            value = std::format("{} {}{}", bar(v, n.min, n.max), number, n.unit);
+            value = ui::hbox({bar(v, n.min, n.max, ui::Color::Cyan), ui::text(std::format(" {}{}", number, n.unit))});
             hint = n.hint;
             break;
         }
         case Item::Kind::Gain: {
             const char* names[] = {"Red", "Green", "Blue"};
+            const ui::Color colours[] = {ui::Color::Red, ui::Color::Green, ui::Color::Blue};
             double v = config_.calibration[item.index].gain[item.channel];
             label = std::string("  ") + names[item.channel];
-            value = std::format("{} {:.2f}", bar(v, 0.0, 1.0), v);
+            value = ui::hbox({bar(v, 0.0, 1.0, colours[item.channel]), ui::text(std::format(" {:.2f}", v))});
             hint = "x twice: remove this calibration";
             break;
         }
@@ -488,10 +505,10 @@ ui::Element App::draw_item(const Item& item, bool selected) {
             label = "+ Calibrate";
             std::vector<CalibrationTarget> targets = calibration_targets();
             if (targets.empty()) {
-                value = "no devices yet";
+                value = ui::text("no devices yet");
             } else {
                 const CalibrationTarget& t = targets[std::min(add_choice_, targets.size() - 1)];
-                value = std::format("‹ {} · {} ›", t.device, t.zone.value_or("all zones"));
+                value = ui::text(std::format("‹ {} · {} ›", t.device, t.zone.value_or("all zones")));
                 hint = "enter: add";
             }
             break;
@@ -499,7 +516,7 @@ ui::Element App::draw_item(const Item& item, bool selected) {
     }
     ui::Element name = ui::text(std::format(" {:<12} ", label));
     if (selected) name = name | ui::inverted;
-    ui::Elements row = {name, ui::text(" " + value)};
+    ui::Elements row = {name, ui::text(" "), value};
     if (selected && !hint.empty()) row.push_back(ui::text("   " + hint) | ui::dim);
     return ui::hbox(std::move(row));
 }
