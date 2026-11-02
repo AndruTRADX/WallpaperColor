@@ -174,8 +174,13 @@ bool Settings::set_mode(Mode mode) {
     return set_value("led", "mode", toml_string(mode_name(mode)));
 }
 
-bool Settings::set_intensity(double value) {
-    return set_value("extract", "min_saturation", toml_float(round2(std::clamp(value, 0.2, 1.0))));
+bool Settings::set_float(std::string_view table, std::string_view key, double value, int decimals) {
+    double scale = std::pow(10.0, decimals);
+    return set_value(table, key, toml_float(std::round(value * scale) / scale));
+}
+
+bool Settings::set_integer(std::string_view table, std::string_view key, long value) {
+    return set_value(table, key, std::to_string(value));
 }
 
 bool Settings::replace_value(size_t line, size_t value_start, const std::string& value) {
@@ -281,6 +286,66 @@ bool Settings::set_gain(size_t index, int channel, double value) {
 
     if (gain_key) return replace_value(gain_line, gain_key->value_start, array);  // keeps "# red, green, blue"
     lines_.insert(lines_.begin() + static_cast<long>(last_key.value_or(*header)) + 1, "gain = " + array);
+    return true;
+}
+
+/// Line of the `index`-th `[[calibration]]` header, and the line where its entry ends
+/// (the next header, or the end). nullopt if there is no such entry.
+static std::optional<std::pair<size_t, size_t>> calibration_block(const std::vector<std::string>& lines,
+                                                                   size_t index) {
+    size_t seen = 0;
+    std::optional<size_t> start;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        std::optional<Header> h = header_of(lines[i]);
+        if (!h) continue;
+        if (start) return std::pair{*start, i};
+        if (h->array && h->name == "calibration" && seen++ == index) start = i;
+    }
+    if (start) return std::pair{*start, lines.size()};
+    return std::nullopt;
+}
+
+/// Whether the file writes calibrations as `calibration = [{…}]` (a layout we do not edit).
+static bool inline_calibrations(const std::vector<std::string>& lines) {
+    for (const std::string& line : lines) {
+        if (header_of(line)) return false;  // only keys before the first table can be that
+        std::optional<KeyLine> k = key_line_of(line);
+        if (k && k->key == "calibration") return true;
+    }
+    return false;
+}
+
+bool Settings::add_calibration(std::string_view device, std::optional<std::string_view> zone) {
+    if (inline_calibrations(lines_)) return false;
+    bool ends_with_newline = !lines_.empty() && lines_.back().empty();
+    if (ends_with_newline) lines_.pop_back();
+    if (!lines_.empty() && !trim(lines_.back()).empty()) lines_.push_back("");
+    lines_.push_back("[[calibration]]");
+    lines_.push_back("device = " + toml_string(device));
+    if (zone) lines_.push_back("zone = " + toml_string(*zone));
+    lines_.push_back("gain = [1.0, 1.0, 1.0]  # red, green, blue");
+    lines_.push_back("");
+    return true;
+}
+
+bool Settings::remove_calibration(size_t index) {
+    if (inline_calibrations(lines_)) return false;
+    std::optional<std::pair<size_t, size_t>> block = calibration_block(lines_, index);
+    if (!block) return true;  // no such entry: nothing to change
+    auto [start, end] = *block;
+
+    // Comments right above the header belong to this entry; comments and blank lines at the
+    // end of it belong to the next one.
+    while (start > 0 && trim(lines_[start - 1]).starts_with('#')) --start;
+    if (end < lines_.size()) {
+        while (end > start && (trim(lines_[end - 1]).empty() || trim(lines_[end - 1]).starts_with('#'))) --end;
+    }
+    lines_.erase(lines_.begin() + static_cast<long>(start), lines_.begin() + static_cast<long>(end));
+
+    // Don't leave two blank lines in a row where the entry was.
+    if (start > 0 && start < lines_.size() && trim(lines_[start - 1]).empty() && trim(lines_[start]).empty()) {
+        lines_.erase(lines_.begin() + static_cast<long>(start));
+    }
     return true;
 }
 

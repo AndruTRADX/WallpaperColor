@@ -39,11 +39,18 @@ public:
 
     // Each setter returns false when the file's layout is one it does not edit (see above).
     bool set_mode(Mode mode);
-    /// min_saturation, kept between 0.2 and 1, rounded to two decimals.
-    bool set_intensity(double value);
+    /// `key = value` in `[table]`, the value rounded to `decimals` decimals.
+    bool set_float(std::string_view table, std::string_view key, double value, int decimals);
+    /// `key = value` in `[table]`, a whole number.
+    bool set_integer(std::string_view table, std::string_view key, long value);
     /// Channel `channel` (0 red, 1 green, 2 blue) of calibration entry `index`, 0-1.
     /// An entry that does not exist is ignored (returns true).
     bool set_gain(size_t index, int channel, double value);
+
+    /// Adds a `[[calibration]]` entry at the end with gains 1, 1, 1 (no `zone`: every zone).
+    bool add_calibration(std::string_view device, std::optional<std::string_view> zone);
+    /// Removes calibration entry `index`, with the comment lines just above it.
+    bool remove_calibration(size_t index);
 
     /// Writes the file atomically (the service never reads a half-written file). Throws wpc::Error.
     void save() const;

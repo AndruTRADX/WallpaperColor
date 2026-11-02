@@ -4,7 +4,6 @@
 #include <cmath>
 #include <format>
 
-#include "core/arc.hpp"
 #include "util/error.hpp"
 #include "util/utf8.hpp"
 
@@ -71,28 +70,18 @@ private:
 // ---------------------------------------------------------------------------------------------
 // Painting
 
-Rgb scale(Rgb c, std::array<float, 3> gain) {
-    auto s = [](uint8_t v, float k) {
-        return static_cast<uint8_t>(std::clamp(std::round(static_cast<float>(v) * k), 0.0f, 255.0f));
-    };
-    return Rgb{s(c.r, gain[0]), s(c.g, gain[1]), s(c.b, gain[2])};
-}
-
-std::vector<Rgb> Controller::paint(const std::vector<Rgb>& stops, const GainFn& gain) const {
+std::vector<Rgb> Controller::paint(Painter& painter) const {
     bool ring = kind != DEVICE_TYPE_DRAM;
     uint32_t zoned = 0;
     for (const Zone& z : zones) zoned += z.leds;
-
-    std::vector<Rgb> out;
     if (zoned != led_count()) {
-        // The zones do not add up: one gradient over all LEDs.
-        std::array<float, 3> g = gain("");
-        for (Rgb c : gradient(stops, led_count(), ring)) out.push_back(scale(c, g));
-        return out;
+        // The zones do not add up: paint all LEDs as one zone.
+        return painter.zone(name, "", static_cast<uint32_t>(led_count()), ring);
     }
+    std::vector<Rgb> out;
     for (const Zone& z : zones) {
-        std::array<float, 3> g = gain(z.name);
-        for (Rgb c : gradient(stops, z.leds, ring)) out.push_back(scale(c, g));
+        std::vector<Rgb> leds = painter.zone(name, z.name, z.leds, ring);
+        out.insert(out.end(), leds.begin(), leds.end());
     }
     return out;
 }

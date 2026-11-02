@@ -54,3 +54,11 @@ TEST_CASE("wrong types are rejected") {
     CHECK_THROWS_AS(Config::from_toml("led = 3\n"), Error);
     CHECK(Config::from_toml("[extract]\nmin_saturation = 1\n").extract.min_saturation == 1.0);
 }
+
+TEST_CASE("split mode and fade") {
+    Config c = Config::from_toml("[led]\nmode = \"split\"\nfade = 1\n");
+    CHECK(c.led.mode == Mode::Split);
+    CHECK(c.led.fade == 1.0);
+    CHECK(Config{}.led.fade == 0.6);
+    CHECK(Config::from_toml(c.to_toml()) == c);
+}

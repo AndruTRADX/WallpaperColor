@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "core/config.hpp"
 #include "openrgb/client.hpp"
 #include "util/error.hpp"
 
@@ -192,10 +193,10 @@ TEST_CASE("calibration scales only the matching zones") {
     FakeServer server(devices(), 4);
     Client c = Client::connect(server.address(), "test");
     Controller cc = c.controller(1);
-    std::vector<Rgb> leds = cc.paint({WHITE}, [](std::string_view zone) {
-        return zone.starts_with("Fan") ? std::array<float, 3>{0.72f, 0.78f, 1.0f}
-                                       : std::array<float, 3>{1, 1, 1};
-    });
+    Config config;
+    config.calibration.push_back(Calibration{"commander", "Fan", {0.72, 0.78, 1.0}});
+    Painter painter({WHITE}, Mode::Arc, config);
+    std::vector<Rgb> leds = cc.paint(painter);
     REQUIRE(leds.size() == 61);
     for (size_t i = 0; i < 29; ++i) CHECK(leds[i] == WHITE);                // AIO untouched
     for (size_t i = 29; i < 61; ++i) CHECK(leds[i] == Rgb{184, 199, 255});  // fans corrected

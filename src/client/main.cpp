@@ -153,10 +153,14 @@ struct SetArgs {
     std::optional<fs::path> image;
     bool arc = false;
     bool single = false;
+    bool split = false;
 };
 
 int run_set(const Config& config, const SetArgs& args) {
-    Mode mode = args.arc ? Mode::Arc : args.single ? Mode::Single : config.led.mode;
+    Mode mode = config.led.mode;
+    if (args.arc) mode = Mode::Arc;
+    if (args.single) mode = Mode::Single;
+    if (args.split) mode = Mode::Split;
 
     std::vector<Rgb> stops;
     if (args.image) {
@@ -171,13 +175,11 @@ int run_set(const Config& config, const SetArgs& args) {
     if (controllers.empty()) {
         throw Error("no devices exposed: turn on \"OpenRGB Integration\" in OpenLinkHub");
     }
+    Painter painter(stops, mode, config);
     std::vector<std::string> label;
     for (Rgb c : stops) label.push_back(swatch(c, 2) + c.hex());
     for (const openrgb::Controller& c : controllers) {
-        std::vector<Rgb> leds = c.paint(stops, [&](std::string_view zone) {
-            return config.gain(c.name, zone);
-        });
-        client.set_leds(c.index, leds);
+        client.set_leds(c.index, c.paint(painter));
         out(std::format("{} → [{}] {}", join(label, " "), c.index, c.name));
     }
     return EXIT_SUCCESS;
@@ -226,7 +228,7 @@ int main(int argc, char** argv) {
         [](std::string& text) { return Rgb::parse(text) ? std::string() : invalid_colour_message(text); },
         "COLOR");
     CLI::Option* colors_opt = set_cmd->add_option("colors", set_args.colors,
-                                                  "Colour(s) as #rrggbb or rrggbb; up to three with --arc")
+                                                  "Colour(s) as #rrggbb or rrggbb; up to three with --arc or --split")
                                   ->expected(1, 3)
                                   ->check(colour_check);
     CLI::Option* image_opt =
@@ -238,7 +240,11 @@ int main(int argc, char** argv) {
         "(default when the config says mode = \"arc\")");
     CLI::Option* single_opt = set_cmd->add_flag(
         "--single", set_args.single, "One colour on every LED (default when the config says mode = \"single\")");
-    arc_opt->excludes(single_opt);
+    CLI::Option* split_opt = set_cmd->add_flag(
+        "--split", set_args.split,
+        "One colour per kind of zone: RAM, pump, fans (default when the config says mode = \"split\")");
+    arc_opt->excludes(single_opt)->excludes(split_opt);
+    single_opt->excludes(split_opt);
 
     CLI::App* config_cmd =
         app.add_subcommand("config", "Print the effective configuration (defaults included) as TOML");

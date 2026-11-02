@@ -11,13 +11,13 @@
 
 #include <array>
 #include <cstdint>
-#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "core/color.hpp"
+#include "core/paint.hpp"
 #include "util/socket.hpp"
 
 namespace wpc::openrgb {
@@ -43,9 +43,6 @@ struct Zone {
     uint32_t leds = 0;
 };
 
-/// Per-channel gains (red, green, blue) for the LEDs of a zone, given the zone's name.
-using GainFn = std::function<std::array<float, 3>(std::string_view zone)>;
-
 struct Controller {
     /// Index used to address the controller in this session (it can change when devices change).
     uint32_t index = 0;
@@ -62,15 +59,10 @@ struct Controller {
 
     size_t led_count() const { return colors.size(); }
 
-    /// Colours for every LED spreading `stops` as one gradient per zone: top to bottom on RAM,
-    /// a seamless ring elsewhere (fans, pumps and strips tend to be loops). One stop paints
-    /// everything that colour. Each zone's red, green and blue are then scaled by
-    /// `gain(zone name)` to correct LEDs that render colours off.
-    std::vector<Rgb> paint(const std::vector<Rgb>& stops, const GainFn& gain) const;
+    /// Colours for every LED, zone by zone (see Painter). RAM is painted top to bottom, the
+    /// rest as rings: fans, pumps and strips tend to be loops.
+    std::vector<Rgb> paint(Painter& painter) const;
 };
-
-/// `c` with each channel multiplied by its gain.
-Rgb scale(Rgb c, std::array<float, 3> gain);
 
 /// Parses a controller description as sent for protocol `proto` (0-4). Throws wpc::Error.
 Controller parse_controller(std::span<const uint8_t> data, uint32_t index, uint32_t proto);

@@ -22,13 +22,17 @@ service notices and reloads it.
    1. ask Plasma over D-Bus which picture is on screen   (kde/plasma.cpp)
    2. same picture and settings as last time? stop
    3. decode it, shrink it to 96×96, pick colours        (core/image.cpp, core/extract.cpp)
-   4. spread them over each device's zones               (core/arc.cpp, openrgb/client.cpp)
-   5. send them to OpenLinkHub's OpenRGB SDK server      (openrgb/client.cpp)
+   4. decide every LED's colour (arc / single / split)   (core/paint.cpp, core/arc.cpp)
+   5. fade to them on OpenLinkHub's OpenRGB SDK server   (daemon/main.cpp, openrgb/client.cpp)
 ```
 
 Every event is only a **trigger**. The answer always comes from Plasma (step 1), so a false
 alarm costs one D-Bus call and changes nothing. A burst of events (Plasma rescanning a folder
 opens every file in it) is merged by waiting until 0.8 s pass with no new event.
+
+A fade sends 25 frames a second, blending each LED from what the service sent last to the new
+colour, for `[led] fade` seconds (at most 1.5, so a request from the terminal UI never waits
+long). Then the service sleeps again.
 
 While nothing happens, every thread is asleep in the kernel: 0 % CPU, about 7.5 MB of RAM. If
 OpenLinkHub or Plasma don't answer, the service retries after 2 s, 4 s, 8 s … up to 60 s.
@@ -52,7 +56,7 @@ How the colours are picked (palette, ignoring grey, specks and skin, pastels, th
 
 ```text
 src/
-  core/     colours, gradients, image decoding, colour extraction, config file, socket protocol
+  core/     colours, gradients, painting, image decoding, colour extraction, config file, socket protocol
   openrgb/  OpenRGB SDK client (TCP, protocol version 4)
   kde/      Plasma over D-Bus, wallpaper packages, light/dark scheme
   util/     sockets, inotify, the thread-safe queue, UTF-8, errors, log
@@ -75,6 +79,8 @@ values that may be missing are `std::optional`. Colour maths uses `float`.
   `daemon/main.cpp`.
 - **Other hardware** (the motherboard's ARGB through OpenRGB itself, port 6742): the same
   OpenRGB client works. Point `[openrgb] address` at it, or add a second address.
+- **Another way to spread colours over the LEDs**: a new `Mode` and its case in
+  `core/paint.cpp`. The service, `set` and the terminal UI's preview all paint through it.
 - **Another way to pick colours**: `core/extract.cpp`. `wallpapercolor extract -p picture` shows
   the result and the palette it came from.
 

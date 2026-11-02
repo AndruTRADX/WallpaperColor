@@ -19,6 +19,8 @@ namespace wpc {
 /// The `[led]` table.
 struct LedConfig {
     Mode mode = Mode::Arc;
+    /// Seconds a colour change takes (0 = at once). At most 1.5.
+    double fade = 0.6;
     bool operator==(const LedConfig&) const = default;
 };
 

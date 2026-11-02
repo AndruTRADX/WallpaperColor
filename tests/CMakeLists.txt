@@ -6,6 +6,7 @@ add_executable(wpc_tests
   main.cpp
   test_color.cpp
   test_arc.cpp
+  test_paint.cpp
   test_extract.cpp
   test_config.cpp
   test_ipc.cpp

@@ -17,7 +17,12 @@
 namespace wpc {
 
 std::string_view mode_name(Mode mode) {
-    return mode == Mode::Arc ? "arc" : "single";
+    switch (mode) {
+        case Mode::Arc: return "arc";
+        case Mode::Single: return "single";
+        case Mode::Split: return "split";
+    }
+    return "arc";
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -146,12 +151,14 @@ Mode read_mode(const toml::node& node) {
     std::string name = read_string(node);
     if (name == "arc") return Mode::Arc;
     if (name == "single") return Mode::Single;
-    fail_at(node.source(), std::format("unknown variant `{}`, expected `arc` or `single`", name));
+    if (name == "split") return Mode::Split;
+    fail_at(node.source(), std::format("unknown variant `{}`, expected one of `arc`, `single`, `split`", name));
 }
 
 void read_led(const toml::table& t, LedConfig& led) {
-    check_keys(t, {"mode"});
+    check_keys(t, {"mode", "fade"});
     if (const toml::node* n = t.get("mode")) led.mode = read_mode(*n);
+    if (const toml::node* n = t.get("fade")) led.fade = read_float(*n);
 }
 
 void read_extract(const toml::table& t, ExtractConfig& e) {
@@ -269,6 +276,7 @@ std::string Config::to_toml() const {
     std::string out;
     out += "[led]\n";
     out += std::format("mode = {}\n", toml_string(mode_name(led.mode)));
+    out += std::format("fade = {}\n", toml_float(led.fade));
     out += "\n[extract]\n";
     out += std::format("palette_size = {}\n", extract.palette_size);
     out += std::format("sample_size = {}\n", extract.sample_size);

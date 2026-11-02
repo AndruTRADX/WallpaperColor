@@ -17,6 +17,7 @@ add_library(wpc_core STATIC
   core/extract.cpp
   core/config.cpp
   core/ipc.cpp
+  core/paint.cpp
 )
 target_link_libraries(wpc_core
   PUBLIC wpc_util

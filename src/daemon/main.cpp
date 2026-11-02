@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <map>
@@ -27,8 +28,10 @@
 #include <vector>
 
 #include "core/config.hpp"
+#include "core/arc.hpp"
 #include "core/extract.hpp"
 #include "core/ipc.hpp"
+#include "core/paint.hpp"
 #include "kde/plasma.hpp"
 #include "openrgb/client.hpp"
 #include "util/channel.hpp"
@@ -48,6 +51,10 @@ namespace {
 constexpr auto SETTLE = 800ms;
 constexpr auto RETRY_MIN = 2s;
 constexpr auto RETRY_MAX = 60s;
+/// Frames per second of a fade, and its longest duration (requests from the terminal UI wait
+/// while a fade runs, and give up after 2 s).
+constexpr int FADE_FPS = 25;
+constexpr double FADE_MAX_SECONDS = 1.5;
 /// Where plasmashell saves the desktop settings, wallpaper included.
 constexpr std::string_view APPLETSRC = "plasma-org.kde.plasma.desktop-appletsrc";
 const std::vector<std::string_view> IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif", "bmp"};
@@ -196,6 +203,8 @@ private:
     ipc::Status status() const;
     void sync(bool force);
     std::vector<ipc::DeviceInfo> send(const std::vector<Rgb>& stops);
+    void fade(openrgb::Client& client, const std::vector<openrgb::Controller>& controllers,
+              const std::vector<std::vector<Rgb>>& targets);
     void fail(const std::string& message);
     void watch_slides(const std::vector<fs::path>& dirs);
     bool watching_config_dir(const fs::path& dir) const;
@@ -212,6 +221,8 @@ private:
     /// What was last sent: picture, its mtime and the settings used.
     std::optional<std::string> last_;
     std::optional<Retry> retry_;
+    /// What each device shows now (what we sent last), by "index name": where fades start.
+    std::map<std::string, std::vector<Rgb>> shown_;
     bool paused_ = false;
     /// What clients see.
     ipc::Status status_;
@@ -419,12 +430,11 @@ void Daemon::sync(bool force) {
 std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops) {
     openrgb::Client client = openrgb::Client::connect(config_.openrgb.address, config_.openrgb.client_name);
     std::vector<openrgb::Controller> controllers = client.controllers();
-    for (const openrgb::Controller& c : controllers) {
-        std::vector<Rgb> leds = c.paint(stops, [&](std::string_view zone) {
-            return config_.gain(c.name, zone);
-        });
-        client.set_leds(c.index, leds);
-    }
+    Painter painter(stops, config_.led.mode, config_);
+    std::vector<std::vector<Rgb>> targets;
+    for (const openrgb::Controller& c : controllers) targets.push_back(c.paint(painter));
+    fade(client, controllers, targets);
+
     std::vector<ipc::DeviceInfo> devices;
     for (const openrgb::Controller& c : controllers) {
         ipc::DeviceInfo d{c.name, c.kind, {}};
@@ -432,6 +442,45 @@ std::vector<ipc::DeviceInfo> Daemon::send(const std::vector<Rgb>& stops) {
         devices.push_back(std::move(d));
     }
     return devices;
+}
+
+/// Moves every device from what it shows to `targets` over `[led] fade` seconds.
+void Daemon::fade(openrgb::Client& client, const std::vector<openrgb::Controller>& controllers,
+                  const std::vector<std::vector<Rgb>>& targets) {
+    // Where each device starts: what we sent it last, else what it reports showing.
+    std::vector<std::vector<Rgb>> from;
+    bool changes = false;
+    for (size_t i = 0; i < controllers.size(); ++i) {
+        const openrgb::Controller& c = controllers[i];
+        auto last = shown_.find(std::format("{} {}", c.index, c.name));
+        if (last != shown_.end() && last->second.size() == targets[i].size()) {
+            from.push_back(last->second);
+        } else if (c.colors.size() == targets[i].size()) {
+            from.push_back(c.colors);
+        } else {
+            from.push_back(targets[i]);  // unknown: no fade for this one
+        }
+        changes = changes || from[i] != targets[i];
+    }
+
+    double seconds = std::clamp(config_.led.fade, 0.0, FADE_MAX_SECONDS);
+    int frames = changes ? std::max(1, static_cast<int>(std::round(seconds * FADE_FPS))) : 1;
+    Clock::time_point start = Clock::now();
+    for (int f = 1; f <= frames; ++f) {
+        float t = static_cast<float>(f) / static_cast<float>(frames);
+        t = t * t * (3.0f - 2.0f * t);  // ease in and out
+        for (size_t i = 0; i < controllers.size(); ++i) {
+            std::vector<Rgb> frame(targets[i].size());
+            for (size_t led = 0; led < frame.size(); ++led) {
+                frame[led] = (f == frames) ? targets[i][led] : mix(from[i][led], targets[i][led], t);
+            }
+            client.set_leds(controllers[i].index, frame);
+        }
+        if (f < frames) std::this_thread::sleep_until(start + f * std::chrono::milliseconds(1000 / FADE_FPS));
+    }
+    for (size_t i = 0; i < controllers.size(); ++i) {
+        shown_[std::format("{} {}", controllers[i].index, controllers[i].name)] = targets[i];
+    }
 }
 
 /// Logs and schedules a retry with exponential backoff.

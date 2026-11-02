@@ -43,8 +43,10 @@ Status status_from(const Json& j) {
     s.version = j.at("version").get<std::string>();
     s.paused = j.at("paused").get<bool>();
     std::string mode = j.at("mode").get<std::string>();
-    if (mode != "arc" && mode != "single") throw Error(std::format("unknown variant `{}`", mode));
-    s.mode = (mode == "arc") ? Mode::Arc : Mode::Single;
+    if (mode == "arc") s.mode = Mode::Arc;
+    else if (mode == "single") s.mode = Mode::Single;
+    else if (mode == "split") s.mode = Mode::Split;
+    else throw Error(std::format("unknown mode `{}`", mode));
     s.plugin = j.at("plugin").get<std::string>();
     if (j.contains("image") && !j["image"].is_null()) s.image = j["image"].get<std::string>();
     s.stops = j.at("stops").get<std::vector<std::string>>();

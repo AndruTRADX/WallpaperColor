@@ -63,6 +63,8 @@ enum class Mode {
     Arc,
     /// The main colour on every LED.
     Single,
+    /// One of the three colours per kind of zone (RAM, pump, fans…), each zone a solid colour.
+    Split,
 };
 
 /// One palette entry: a colour and the share of the picture it covers (0-1).
@@ -83,7 +85,7 @@ struct Extraction {
     /// Three LED colours for an arc; arc[0] == led.
     std::array<Rgb, 3> arc;
 
-    /// Gradient stops for `mode`: the three arc colours, or just the main colour.
+    /// The colours `mode` paints with: the three arc colours, or just the main colour.
     std::vector<Rgb> stops(Mode mode) const;
 };
 

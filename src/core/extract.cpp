@@ -139,8 +139,8 @@ struct Candidate {
 }  // namespace
 
 std::vector<Rgb> Extraction::stops(Mode mode) const {
-    if (mode == Mode::Arc) return {arc.begin(), arc.end()};
-    return {led};
+    if (mode == Mode::Single) return {led};
+    return {arc.begin(), arc.end()};
 }
 
 float hue_distance(float a, float b) {

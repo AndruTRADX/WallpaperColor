@@ -26,7 +26,7 @@ wallpapercolor                               # terminal UI: status, device previ
 wallpapercolor status                        # what the service is doing (also pause/resume/apply)
 wallpapercolor extract -p picture.png        # colours of a picture (main + arc)
 wallpapercolor devices                       # RGB devices the server exposes
-wallpapercolor set --image picture.png       # paint them once (--arc / --single)
+wallpapercolor set --image picture.png       # paint them once (--arc / --single / --split)
 wallpapercolor config                        # effective config
 ```
 
@@ -34,7 +34,9 @@ Config: `~/.config/wallpapercolor/config.toml` (every key optional, the service 
 
 ```toml
 [led]
-mode = "arc"        # or "single"
+mode = "arc"        # "arc": three colours as a gradient; "single": one colour;
+                    # "split": one colour per kind of zone (RAM, pump, fans)
+fade = 0.6          # seconds a colour change takes (0 = at once, at most 1.5)
 
 [openrgb]
 address = "127.0.0.1:6743"
