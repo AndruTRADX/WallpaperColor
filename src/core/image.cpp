@@ -42,8 +42,8 @@ static Image decode_webp(const std::vector<unsigned char>& data) {
         WebPDecodeRGB(data.data(), data.size(), &width, &height), &WebPFree);
     if (!pixels) throw Error("cannot read image: invalid WebP data");
 
-    Image image{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 255, {}};
-    image.rgb.assign(pixels.get(), pixels.get() + static_cast<size_t>(width) * height * 3);
+    Image image{static_cast<uint32_t>(width), static_cast<uint32_t>(height), {}, {}};
+    image.rgb8.assign(pixels.get(), pixels.get() + static_cast<size_t>(width) * height * 3);
     return image;
 }
 
@@ -60,15 +60,13 @@ static Image decode_with_stb(const std::vector<unsigned char>& data) {
             stbi_load_16_from_memory(data.data(), size, &width, &height, &channels_in_file, 3),
             &stbi_image_free);
         if (!pixels) throw Error(std::format("cannot read image: {}", stbi_failure_reason()));
-        image.max = 65535;
-        image.rgb.assign(pixels.get(), pixels.get() + static_cast<size_t>(width) * height * 3);
+        image.rgb16.assign(pixels.get(), pixels.get() + static_cast<size_t>(width) * height * 3);
     } else {
         std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
             stbi_load_from_memory(data.data(), size, &width, &height, &channels_in_file, 3),
             &stbi_image_free);
         if (!pixels) throw Error(std::format("cannot read image: {}", stbi_failure_reason()));
-        image.max = 255;
-        image.rgb.assign(pixels.get(), pixels.get() + static_cast<size_t>(width) * height * 3);
+        image.rgb8.assign(pixels.get(), pixels.get() + static_cast<size_t>(width) * height * 3);
     }
     image.width = static_cast<uint32_t>(width);
     image.height = static_cast<uint32_t>(height);
@@ -134,12 +132,13 @@ static uint8_t u16_to_u8(float value) {
 
 std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Image& image, uint32_t width,
                                                    uint32_t height) {
-    std::vector<float> out;  // width × height × 3, whole numbers in 0..max
+    const float max = image.max();
+    std::vector<float> out(static_cast<size_t>(width) * height * 3, 0.0f);  // whole numbers 0..max
 
     if (image.width == 0 || image.height == 0) {
-        out.assign(static_cast<size_t>(width) * height * 3, 0.0f);  // a black picture
+        // nothing to sample: a black picture
     } else if (image.width == width && image.height == height) {
-        out = image.rgb;  // same size: a plain copy, no resampling
+        for (size_t i = 0; i < out.size(); ++i) out[i] = image.sample(i);  // same size: a plain copy
     } else {
         // 1. Vertical pass: image.width × height, kept as unrounded floats.
         std::vector<float> tall(static_cast<size_t>(image.width) * height * 3);
@@ -149,7 +148,7 @@ std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Image& image, uint32_t 
                 float t[3] = {0.0f, 0.0f, 0.0f};
                 for (size_t i = 0; i < taps.weights.size(); ++i) {
                     size_t src = ((taps.first + i) * image.width + x) * 3;
-                    for (int c = 0; c < 3; ++c) t[c] += image.rgb[src + c] * taps.weights[i];
+                    for (int c = 0; c < 3; ++c) t[c] += image.sample(src + c) * taps.weights[i];
                 }
                 size_t dst = (static_cast<size_t>(y) * image.width + x) * 3;
                 for (int c = 0; c < 3; ++c) tall[dst + c] = t[c];
@@ -157,7 +156,6 @@ std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Image& image, uint32_t 
         }
 
         // 2. Horizontal pass: width × height, clamped to 0..max and rounded.
-        out.resize(static_cast<size_t>(width) * height * 3);
         for (uint32_t x = 0; x < width; ++x) {
             Taps taps = taps_for(x, image.width, width);
             for (uint32_t y = 0; y < height; ++y) {
@@ -168,7 +166,7 @@ std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Image& image, uint32_t 
                 }
                 size_t dst = (static_cast<size_t>(y) * width + x) * 3;
                 for (int c = 0; c < 3; ++c) {
-                    out[dst + c] = std::round(std::clamp(t[c], 0.0f, image.max));
+                    out[dst + c] = std::round(std::clamp(t[c], 0.0f, max));
                 }
             }
         }
@@ -179,7 +177,7 @@ std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Image& image, uint32_t 
     for (size_t p = 0; p < pixels.size(); ++p) {
         for (int c = 0; c < 3; ++c) {
             float v = out[p * 3 + c];
-            pixels[p][c] = (image.max > 255) ? u16_to_u8(v) : static_cast<uint8_t>(v);
+            pixels[p][c] = image.is_16_bit() ? u16_to_u8(v) : static_cast<uint8_t>(v);
         }
     }
     return pixels;

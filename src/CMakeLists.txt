@@ -6,6 +6,7 @@
 add_library(wpc_util STATIC
   util/socket.cpp
   util/utf8.cpp
+  util/inotify.cpp
 )
 target_include_directories(wpc_util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -25,6 +26,14 @@ target_link_libraries(wpc_core
 # OpenRGB SDK client (wpc-openrgb).
 add_library(wpc_openrgb STATIC openrgb/client.cpp)
 target_link_libraries(wpc_openrgb PUBLIC wpc_core)
+
+# KDE Plasma wallpaper source over D-Bus (wpc-kde).
+add_library(wpc_kde STATIC kde/plasma.cpp)
+target_link_libraries(wpc_kde PUBLIC wpc_core PRIVATE SDBusCpp::sdbus-c++)
+
+# The service. No terminal UI code here.
+add_executable(wallpapercolord daemon/main.cpp)
+target_link_libraries(wallpapercolord PRIVATE wpc_core wpc_openrgb wpc_kde)
 
 # The terminal client.
 add_executable(wallpapercolor

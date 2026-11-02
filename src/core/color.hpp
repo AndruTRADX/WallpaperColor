@@ -41,6 +41,10 @@ inline constexpr Rgb WHITE{255, 255, 255};
 /// The error message for a text that `Rgb::parse` rejects.
 std::string invalid_colour_message(std::string_view text);
 
+/// One byte from two hex characters, the way Rust's u8::from_str_radix(.., 16) reads them:
+/// two hex digits, or (a Rust quirk we keep) a '+' followed by one hex digit.
+std::optional<uint8_t> parse_hex_byte(char a, char b);
+
 // Small maths helpers that behave exactly like their Rust namesakes.
 
 /// Rust's `f32::rem_euclid`: the remainder, always >= 0 (for b > 0).

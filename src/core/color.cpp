@@ -55,9 +55,7 @@ std::string Rgb::hex() const {
     return std::format("#{:02x}{:02x}{:02x}", r, g, b);
 }
 
-// One hex byte the way Rust's u8::from_str_radix(.., 16) reads two characters:
-// two hex digits, or (a Rust quirk we keep) a '+' followed by one hex digit.
-static std::optional<uint8_t> parse_hex_byte(char a, char b) {
+std::optional<uint8_t> parse_hex_byte(char a, char b) {
     auto digit = [](char c) -> int {
         if (c >= '0' && c <= '9') return c - '0';
         if (c >= 'a' && c <= 'f') return c - 'a' + 10;

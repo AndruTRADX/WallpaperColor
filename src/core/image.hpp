@@ -1,7 +1,7 @@
 // Decoded pictures and the resize used before colour extraction.
 //
-// Pixels are stored as floats holding whole numbers (0-255, or 0-65535 for 16-bit PNGs),
-// because the resize works in floats anyway. Only red, green and blue are kept: alpha is
+// Pixels are kept as decoded: one byte per channel, or two for 16-bit PNGs. Only red, green
+// and blue are kept: alpha is
 // dropped and grey is copied to all three channels, which is what the Rust version's
 // `to_rgb8()` does at the end (the resize treats every channel on its own, so dropping
 // alpha first gives the same pixels).
@@ -18,10 +18,16 @@ namespace wpc {
 struct Image {
     uint32_t width = 0;
     uint32_t height = 0;
-    /// Largest channel value: 255 (8-bit) or 65535 (16-bit).
-    float max = 255;
-    /// width × height × 3 values, row by row, red green blue.
-    std::vector<float> rgb;
+    /// width × height × 3 values, row by row, red green blue. One of the two is filled:
+    /// `rgb8` for 8-bit pictures (almost all), `rgb16` for 16-bit PNGs.
+    std::vector<uint8_t> rgb8;
+    std::vector<uint16_t> rgb16;
+
+    bool is_16_bit() const { return !rgb16.empty(); }
+    /// Largest channel value: 255 or 65535.
+    float max() const { return is_16_bit() ? 65535.0f : 255.0f; }
+    /// Channel value number `i` (0 .. width × height × 3).
+    float sample(size_t i) const { return is_16_bit() ? rgb16[i] : rgb8[i]; }
 };
 
 /// Reads a JPEG, PNG, WebP, GIF (first frame) or BMP. The format comes from the file's

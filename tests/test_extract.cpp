@@ -17,11 +17,11 @@ using PixelFn = std::function<std::array<uint8_t, 3>(uint32_t x, uint32_t y)>;
 
 /// A 200 × 100 picture painted by `f`.
 Image image_from(const PixelFn& f, uint32_t width = 200, uint32_t height = 100) {
-    Image image{width, height, 255, {}};
+    Image image{width, height, {}, {}};
     for (uint32_t y = 0; y < height; ++y) {
         for (uint32_t x = 0; x < width; ++x) {
             std::array<uint8_t, 3> p = f(x, y);
-            image.rgb.insert(image.rgb.end(), {float(p[0]), float(p[1]), float(p[2])});
+            image.rgb8.insert(image.rgb8.end(), p.begin(), p.end());
         }
     }
     return image;
