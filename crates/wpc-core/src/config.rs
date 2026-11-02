@@ -11,6 +11,27 @@ use std::{fmt, fs, io};
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub extract: ExtractConfig,
+    pub openrgb: OpenRgbConfig,
+}
+
+/// Where to send colours: an OpenRGB SDK server.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct OpenRgbConfig {
+    /// `host:port`. OpenLinkHub's built-in server listens on 6743 (`enableOpenRGBTargetServer`);
+    /// OpenRGB itself on 6742.
+    pub address: String,
+    /// Name shown to the server for this client.
+    pub client_name: String,
+}
+
+impl Default for OpenRgbConfig {
+    fn default() -> Self {
+        Self {
+            address: "127.0.0.1:6743".into(),
+            client_name: "WallpaperColor".into(),
+        }
+    }
 }
 
 #[derive(Debug)]

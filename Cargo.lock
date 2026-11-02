@@ -456,6 +456,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "wpc-core",
+ "wpc-openrgb",
 ]
 
 [[package]]
@@ -495,6 +496,13 @@ dependencies = [
  "image",
  "serde",
  "toml",
+]
+
+[[package]]
+name = "wpc-openrgb"
+version = "0.1.0"
+dependencies = [
+ "wpc-core",
 ]
 
 [[package]]

@@ -9,3 +9,4 @@ authors.workspace = true
 [dependencies]
 wpc-core.workspace = true
 clap.workspace = true
+wpc-openrgb = { path = "../wpc-openrgb" }

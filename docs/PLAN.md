@@ -110,13 +110,13 @@ El prototipo falló porque los LEDs no cambiaban, así que esto va primero.
 
 **Resultado frente al prototipo (24 fondos al azar):** mediana de 5° de diferencia de tono; 22/24 prácticamente iguales; en los 2 restantes Rust acierta y el prototipo no (comprobado viendo las imágenes). 3,4 veces más rápido (0,9 s frente a 3,1 s) y lee los 255 fondos sin fallos.
 
-### Fase 2: cliente OpenRGB
+### Fase 2: cliente OpenRGB ✅
 
-- `wpc-openrgb`: conectar, leer controladores (nombre, zonas, LEDs) y enviar colores; reconexión si OpenLinkHub se reinicia.
-- `wallpapercolor devices` y `wallpapercolor set '#ff0000'`.
-- Tests contra un servidor SDK falso dentro del propio test.
+- `wpc-openrgb`: cliente síncrono solo con `std` (sin tokio): negociación de versión (hasta v4), lista de controladores con zonas y colores actuales, `UPDATELEDS`. Ignora las notificaciones `DEVICE_LIST_UPDATED` que mande el servidor.
+- `wallpapercolor devices`, `wallpapercolor set '#hex'` y `set --image <foto>`; dirección del servidor en `[openrgb]` del TOML.
+- 6 tests contra un servidor falso que codifica igual que OpenLinkHub (incluidos datos truncados: error, nunca pánico).
 
-**Criterio de salida:** `set` cambia los LEDs reales.
+**Resultado:** lee tus 3 dispositivos con sus zonas (RAM 2 × 10 LEDs; Commander Core 61 = AIO H150i 29 + 4 ventiladores × 8) y `set --image` con el fondo actual pintó todo de azul cielo. Confirmado mirando el hardware.
 
 ### Fase 3: el servicio (primer resultado completo)
 
