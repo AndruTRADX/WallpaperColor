@@ -70,6 +70,15 @@ struct Config {
     bool operator==(const Config&) const = default;
 };
 
+/// Throws wpc::Error if `text` is not valid TOML (any keys allowed).
+void check_toml(std::string_view text);
+
+/// A float written the way the config file has it: 0.7, 1.0 (never an exponent).
+std::string toml_float(double value);
+
+/// A TOML string: "text", with quotes, backslashes and control characters escaped.
+std::string toml_string(std::string_view text);
+
 /// "arc" / "single", as written in the config file and sent over IPC.
 std::string_view mode_name(Mode mode);
 

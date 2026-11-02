@@ -223,13 +223,19 @@ Config Config::from_toml(std::string_view text) {
     return config;
 }
 
+void check_toml(std::string_view text) {
+    try {
+        [[maybe_unused]] toml::table parsed = toml::parse(text);
+    } catch (const toml::parse_error& e) {
+        fail_at(e.source(), std::string(e.description()));
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Writing, in the same layout as the Rust version (toml::to_string_pretty).
 
-namespace {
-
-/// A TOML float: shortest form that reads back the same, never an exponent, always with a
-/// decimal point (0.7, 1.0, 100000000000000000000.0).
+/// Shortest form that reads back the same, never an exponent, always with a decimal point
+/// (0.7, 1.0, 100000000000000000000.0).
 std::string toml_float(double v) {
     if (std::isnan(v)) return "nan";
     if (std::isinf(v)) return v < 0 ? "-inf" : "inf";
@@ -240,7 +246,6 @@ std::string toml_float(double v) {
     return out;
 }
 
-/// A TOML basic string: "text" with \ " and control characters escaped.
 std::string toml_string(std::string_view s) {
     std::string out = "\"";
     for (char ch : s) {
@@ -263,8 +268,6 @@ std::string toml_string(std::string_view s) {
     }
     return out + "\"";
 }
-
-}  // namespace
 
 std::string Config::to_toml() const {
     std::string out;

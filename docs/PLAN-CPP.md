@@ -158,6 +158,41 @@ reference until phase 7.
   It compiles with g++ 16.
 - Still to do: install the packages (needs sudo), then `cmake` builds the placeholder.
 
+### Progress of phases 1–6 (2026-11-02)
+
+All six are written and pass 58 unit tests (the 51 Rust ones plus 7 for Rust quirks the
+port has to copy). What matches the Rust reference, checked against `tests/golden/`:
+
+| Check | Result |
+| --- | --- |
+| `extract -p` on 152 PNG wallpapers | **identical** (the resize port is bit-exact) |
+| `extract -p` on 103 JPEG wallpapers | 70 identical, **33 differ** (see "Open decisions" below) |
+| `config` for the valid files | identical; error messages give the same line, column and text, without Rust's source snippet |
+| `devices` + 6 `set` scenarios: output **and every packet** | identical |
+| `kde_current` vs the Rust example | identical |
+| Daemon scenario (status, pause, resume, apply, reload, config typo, OpenRGB down → backoff → back) | identical log and answers; 0 CPU ticks idle |
+| TUI at 100×30, before and after a key press, and the saved config | identical text and file; only green/cyan are sent as ANSI codes instead of 256-colour indexes |
+
+Not yet done: you watching the LEDs, a week of use, and phase 7 (switching `install.sh`, deleting Rust).
+
+**Open decisions:**
+
+1. **JPEG decoding.** zune-jpeg, the Rust decoder, has its own 14-bit colour conversion and its
+   own chroma upsampling. No standard decoder does the same (stb_image: 2–10 % of bytes differ
+   by up to 4/255; libjpeg-turbo is about as far off). 33 of the 103 JPEG wallpapers get a
+   different colour: median hue shift 1°, but in 14 the main colour changes slightly, and in
+   one (`yamasakiu-1.jpg`) a different third arc colour is picked. To match exactly, port
+   zune-jpeg's IDCT, upsampling and colour conversion on top of libjpeg-turbo's decoded
+   coefficients: about 400–600 lines in one `jpeg.cpp`.
+2. **Retry bug in the Rust original.** While OpenLinkHub is unreachable, every retry re-reads the
+   wallpaper. That *open* inside the watched slideshow folder fires inotify, which triggers the
+   next retry 0.85 s later. The 2 → 60 s backoff never takes effect, and a JPEG is decoded about
+   once a second until OpenLinkHub returns. Proposed fix: ignore inotify opens of the picture
+   currently on screen (a new slide always opens a different file).
+3. **Memory.** Peak while extracting a 4K JPEG: Rust 37 MB, C++ 61 MB (stb_image's buffer is
+   copied once). Idle after a send: about 22–27 MB for both, memory malloc keeps after freeing.
+   `malloc_trim(0)` after each extraction would bring it close to zero.
+
 ### Phase 1: `core`, colour and extraction
 
 - `color`, `arc`, `resize`, `extract`, plus `wallpapercolor extract <img>… [-p]`.

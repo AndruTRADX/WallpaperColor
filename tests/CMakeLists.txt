@@ -11,6 +11,8 @@ add_executable(wpc_tests
   test_ipc.cpp
   test_openrgb.cpp
   test_kde.cpp
+  test_settings.cpp
+  ../src/client/settings.cpp
 )
 target_link_libraries(wpc_tests PRIVATE wpc_core wpc_openrgb wpc_kde doctest::doctest)
 doctest_discover_tests(wpc_tests)

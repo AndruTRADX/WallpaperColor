@@ -38,6 +38,8 @@ target_link_libraries(wallpapercolord PRIVATE wpc_core wpc_openrgb wpc_kde)
 # The terminal client.
 add_executable(wallpapercolor
   client/main.cpp
+  client/settings.cpp
   client/tui.cpp
 )
-target_link_libraries(wallpapercolor PRIVATE wpc_core wpc_openrgb CLI11::CLI11)
+target_link_libraries(wallpapercolor PRIVATE wpc_core wpc_openrgb CLI11::CLI11
+  ftxui::screen ftxui::dom ftxui::component)

@@ -12,6 +12,19 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# FTXUI (terminal UI) is not packaged in the distribution: CMake downloads this exact version
+# once into the build folder. Declared before our warning flags so they don't apply to it.
+include(FetchContent)
+set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(ftxui
+  GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+  GIT_TAG v6.1.9
+  GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(ftxui)
+
 add_compile_options(
   -Wall -Wextra -Wpedantic
   # Colour maths must give the same bits as the Rust version: no fused multiply-add
