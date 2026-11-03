@@ -3,6 +3,7 @@
 # compiled. Ships inside wallpapercolor-<version>-<arch>.tar.gz as install.sh.
 #   ~/.local/bin/wallpapercolor   terminal client
 #   ~/.local/bin/wallpapercolord  service (systemd user unit wallpapercolord.service)
+#   ~/.local/lib/wallpapercolor/drivers/  driver modules, loaded only while needed
 # Usage: ./install.sh              install and (re)start the service
 #        ./install.sh --no-start   install only
 #        ./install.sh --udev       also install the udev rule for Gigabyte RGB Fusion 2 (sudo)
@@ -20,6 +21,8 @@ done
 
 install -Dm755 wallpapercolor  "$HOME/.local/bin/wallpapercolor"
 install -Dm755 wallpapercolord "$HOME/.local/bin/wallpapercolord"
+rm -rf "$HOME/.local/lib/wallpapercolor/drivers"   # no module of an older version stays behind
+install -Dm755 -t "$HOME/.local/lib/wallpapercolor/drivers" drivers/wpc-driver-*.so
 install -Dm644 wallpapercolord.service "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/wallpapercolord.service"
 systemctl --user daemon-reload
 

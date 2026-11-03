@@ -10,18 +10,26 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "core/config.hpp"
-#include "openrgb/client.hpp"
-#include "util/error.hpp"
+#include "drivers/openrgb/domain/settings.hpp"
+#include "drivers/openrgb/domain/zones.hpp"
+#include "drivers/openrgb/infrastructure/services/client.hpp"
+#include "drivers/openrgb/presentation/driver.hpp"
+#include "utils/error.hpp"
 
 using namespace wpc;
 using namespace wpc::openrgb;
 
 namespace {
 
+/// The driver as its module creates it.
+std::unique_ptr<wpc::Driver> create(const DriverSettings& table) {
+    return std::make_unique<ServerDriver>(read_settings(table), std::make_unique<Client>());
+}
+
 struct FakeController {
     std::string name;
     std::vector<std::pair<std::string, uint32_t>> zones;
+    int32_t kind = 7;  // OpenRGB device type
 };
 
 void u16le(std::vector<uint8_t>& b, uint16_t v) { b.insert(b.end(), {uint8_t(v), uint8_t(v >> 8)}); }
@@ -37,7 +45,7 @@ void string(std::vector<uint8_t>& b, const std::string& s) {
 /// Controller data for protocol 4, same layout as OpenLinkHub's buildDeviceDataPayload.
 std::vector<uint8_t> encode(const FakeController& c) {
     std::vector<uint8_t> b;
-    u32le(b, 7);  // device type
+    u32le(b, uint32_t(c.kind));  // device type
     string(b, c.name);
     for (const char* s : {"Corsair", "desc", "1.0", "SERIAL", "HID: /dev/hidraw8"}) string(b, s);
     u16le(b, 1);  // one mode
@@ -75,8 +83,8 @@ std::vector<uint8_t> encode(const FakeController& c) {
 
 std::vector<FakeController> devices() {
     return {
-        {"VENGEANCE RGB", {{"DIMM", 10}}},
-        {"iCUE COMMANDER Core", {{"AIO", 29}, {"Fan 1", 8}, {"Fan 2", 24}}},
+        {"VENGEANCE RGB", {{"DIMM", 10}}, device_type::DRAM},
+        {"iCUE COMMANDER Core", {{"AIO", 29}, {"Fan 1", 8}, {"Fan 2", 24}}, device_type::COOLER},
     };
 }
 
@@ -173,7 +181,6 @@ TEST_CASE("lists controllers") {
         std::vector<Controller> ctrls = c.controllers();
         REQUIRE(ctrls.size() == 2);
         CHECK(ctrls[0].name == "VENGEANCE RGB");
-        CHECK(ctrls[0].vendor == "Corsair");
         CHECK(ctrls[0].led_count() == 10);
         CHECK(ctrls[0].colors[0] == Rgb{0, 255, 255});
         CHECK(ctrls[1].name == "iCUE COMMANDER Core");
@@ -189,17 +196,73 @@ TEST_CASE("lists controllers") {
     }
 }
 
-TEST_CASE("calibration scales only the matching zones") {
+TEST_CASE("zones are classified by device type and name") {
+    auto zones_of = [](const FakeController& f) { return classify(parse_controller(encode(f), 0, 4)); };
+
+    std::vector<wpc::Zone> ram = zones_of(devices()[0]);
+    REQUIRE(ram.size() == 1);
+    CHECK(ram[0].component == Component::Ram);
+    CHECK(ram[0].shape == Shape::Line);
+
+    // An AIO: its head is the pump, the rest fans; all rings.
+    std::vector<wpc::Zone> aio = zones_of(devices()[1]);
+    REQUIRE(aio.size() == 3);
+    CHECK(aio[0].component == Component::Pump);
+    CHECK(aio[1].component == Component::Fans);
+    CHECK(aio[2].component == Component::Fans);
+    CHECK(aio[2].shape == Shape::Ring);
+
+    CHECK(zones_of({"Strip", {{"LEDs", 30}}, device_type::LED_STRIP})[0].component == Component::Strip);
+    CHECK(zones_of({"K70", {{"Keys", 104}}, device_type::KEYBOARD})[0].shape == Shape::Line);
+    CHECK(zones_of({"Thing", {{"Pump head", 4}}, 7})[0].component == Component::Pump);
+    CHECK(zones_of({"Thing", {{"Ring", 4}}, 7})[0].component == Component::Other);
+}
+
+TEST_CASE("the driver sends the whole device at once, or only the chosen zones") {
     FakeServer server(devices(), 4);
-    Client c = Client::connect(server.address(), "test");
-    Controller cc = c.controller(1);
-    Config config;
-    config.calibration.push_back(Calibration{"commander", "Fan", {0.72, 0.78, 1.0}});
-    Painter painter({WHITE}, Mode::Arc, config);
-    std::vector<Rgb> leds = cc.paint(painter);
-    REQUIRE(leds.size() == 61);
-    for (size_t i = 0; i < 29; ++i) CHECK(leds[i] == WHITE);                // AIO untouched
-    for (size_t i = 29; i < 61; ++i) CHECK(leds[i] == Rgb{184, 199, 255});  // fans corrected
+    {
+        std::unique_ptr<wpc::Driver> driver = create(DriverSettings("openrgb", {{"address", server.address()}}));
+        std::vector<Device> found = driver->devices();
+        REQUIRE(found.size() == 2);
+        CHECK(found[1].name == "iCUE COMMANDER Core");
+        CHECK(found[1].reported.size() == 61);
+
+        std::vector<Rgb> aio(29, Rgb{1, 2, 3});
+        std::vector<Rgb> fan1(8, Rgb{4, 5, 6});
+        std::vector<Rgb> fan2(24, Rgb{7, 8, 9});
+        std::vector<ZoneFrame> all = {{0, aio}, {1, fan1}, {2, fan2}};
+        driver->show(1, all);  // every zone: one UPDATE_LEDS
+        std::vector<ZoneFrame> fans = {{1, fan1}, {2, fan2}};
+        driver->show(1, fans);  // the pump left out: one UPDATE_ZONE_LEDS per fan
+    }
+    std::vector<Received> sent;
+    for (const Received& r : server.received()) {
+        if (r.id == packet::UPDATE_LEDS || r.id == packet::UPDATE_ZONE_LEDS) sent.push_back(r);
+    }
+    REQUIRE(sent.size() == 3);
+    CHECK(sent[0].id == packet::UPDATE_LEDS);
+    CHECK(sent[0].device == 1);
+    CHECK(sent[0].payload.size() == 6 + 61 * 4);
+
+    for (uint32_t zone : {1u, 2u}) {
+        const std::vector<uint8_t>& p = sent[zone].payload;
+        uint32_t leds = zone == 1 ? 8 : 24;
+        CHECK(sent[zone].id == packet::UPDATE_ZONE_LEDS);
+        CHECK(sent[zone].device == 1);
+        REQUIRE(p.size() == 10 + leds * 4);
+        CHECK((p[0] | (p[1] << 8)) == int(p.size()));  // size of the whole payload
+        CHECK(p[4] == zone);                            // zone number
+        CHECK((p[8] | (p[9] << 8)) == int(leds));       // LED count
+        CHECK(p[10] == (zone == 1 ? 4 : 7));            // first LED's red
+    }
+}
+
+TEST_CASE("driver settings") {
+    DriverSettings table("openrgb", {{"address", std::string("10.0.0.2:6742")}, {"adress", std::string("x")}});
+    CHECK(read_settings(table).address == "10.0.0.2:6742");
+    CHECK(read_settings(table).client_name == "WallpaperColor");
+    CHECK(table.unread() == std::vector<std::string>{"adress"});  // a typo is noticed
+    CHECK_THROWS_AS(read_settings(DriverSettings("openrgb", {{"address", 6742.0}})), Error);
 }
 
 TEST_CASE("negotiates down to newest common version") {

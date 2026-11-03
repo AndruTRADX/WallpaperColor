@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the portable release tarball: dist/wallpapercolor-<version>-x86_64.tar.gz (+ .sha256).
-# The binaries only need glibc and libsystemd, so the tarball runs on any systemd distribution
+# The binaries only need glibc, libstdc++ (GCC 14 or newer), libsystemd and zlib, so the tarball
+# runs on any systemd distribution with Plasma 6 (libstdc++ and zlib come with every KDE system)
 # with a glibc at least as new as the one this is built on (CI uses Ubuntu 24.04: glibc 2.39).
 # Usage: packaging/release.sh        (CC / CXX pick the compiler, GCC 14 or newer)
 set -euo pipefail
@@ -18,6 +19,15 @@ stage="build-portable/$name"
 rm -rf "$stage" && mkdir -p "$stage"
 install -m755 -s build-portable/src/wallpapercolor  "$stage/wallpapercolor"
 install -m755 -s build-portable/src/wallpapercolord "$stage/wallpapercolord"
+install -Dm755 -s -t "$stage/drivers" build-portable/src/drivers/wpc-driver-*.so
+
+# A module with a GNU "unique" symbol could never be unloaded (see cmake/drivers.cmake).
+for module in "$stage"/drivers/*.so; do
+  if nm -D --defined-only "$module" | grep -q ' u '; then
+    echo "$module has unique symbols: it could not be unloaded" >&2
+    exit 1
+  fi
+done
 install -m644 systemd/wallpapercolord.service "$stage/"
 install -m644 udev/70-wallpapercolor.rules "$stage/"
 install -m755 packaging/install.sh "$stage/install.sh"
@@ -28,5 +38,7 @@ tar -C build-portable -czf "dist/$name.tar.gz" --owner=0 --group=0 "$name"
 (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 
 echo "dist/$name.tar.gz"
-echo "Needs glibc $(objdump -T "$stage/wallpapercolord" "$stage/wallpapercolor" |
-  grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1 | cut -d_ -f2) or newer."
+echo "Needs glibc $(objdump -T "$stage/wallpapercolord" "$stage/wallpapercolor" "$stage"/drivers/*.so |
+  grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1 | cut -d_ -f2) and libstdc++ $(objdump -T \
+  "$stage/wallpapercolord" "$stage/wallpapercolor" "$stage"/drivers/*.so |
+  grep -o 'GLIBCXX_[0-9.]*' | sort -Vu | tail -1 | cut -d_ -f2) or newer."

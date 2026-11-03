@@ -7,7 +7,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb/stb_image_write.h>
 
-#include "core/extract.hpp"
+#include "shared/domain/colours/extract.hpp"
+#include "shared/infrastructure/services/picture_files.hpp"
 
 using namespace wpc;
 
@@ -16,8 +17,8 @@ namespace {
 using PixelFn = std::function<std::array<uint8_t, 3>(uint32_t x, uint32_t y)>;
 
 /// A 200 × 100 picture painted by `f`.
-Image image_from(const PixelFn& f, uint32_t width = 200, uint32_t height = 100) {
-    Image image{width, height, {}, {}};
+Picture image_from(const PixelFn& f, uint32_t width = 200, uint32_t height = 100) {
+    Picture image{width, height, {}, {}};
     for (uint32_t y = 0; y < height; ++y) {
         for (uint32_t x = 0; x < width; ++x) {
             std::array<uint8_t, 3> p = f(x, y);
@@ -27,11 +28,11 @@ Image image_from(const PixelFn& f, uint32_t width = 200, uint32_t height = 100) 
     return image;
 }
 
-Image solid(uint8_t r, uint8_t g, uint8_t b) {
+Picture solid(uint8_t r, uint8_t g, uint8_t b) {
     return image_from([=](uint32_t, uint32_t) { return std::array<uint8_t, 3>{r, g, b}; });
 }
 
-Extraction run(const Image& image) {
+Extraction run(const Picture& image) {
     return extract(image, ExtractConfig{});
 }
 
@@ -170,7 +171,7 @@ TEST_CASE("format comes from content not extension") {
     std::vector<uint8_t> blue;
     for (int i = 0; i < 16; ++i) blue.insert(blue.end(), {0, 0, 255});
     REQUIRE(stbi_write_png(path.c_str(), 4, 4, 3, blue.data(), 4 * 3));
-    Extraction e = extract_path(path, ExtractConfig{});
+    Extraction e = extract(PictureFiles().read(path, picture_side(ExtractConfig{})), ExtractConfig{});
     std::filesystem::remove_all(dir);
     CHECK(e.led == Rgb{0, 0, 255});
 }
@@ -211,6 +212,6 @@ TEST_CASE("colourless picture arc is white") {
 }
 
 TEST_CASE("single pixel image") {
-    Image one = image_from([](uint32_t, uint32_t) { return std::array<uint8_t, 3>{0, 255, 0}; }, 1, 1);
+    Picture one = image_from([](uint32_t, uint32_t) { return std::array<uint8_t, 3>{0, 255, 0}; }, 1, 1);
     CHECK(run(one).led == Rgb{0, 255, 0});
 }

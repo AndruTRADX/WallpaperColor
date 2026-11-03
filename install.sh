@@ -2,9 +2,10 @@
 # Builds WallpaperColor and installs it for the current user:
 #   ~/.local/bin/wallpapercolor   terminal client
 #   ~/.local/bin/wallpapercolord  service (systemd user unit wallpapercolord.service)
+#   ~/.local/lib/wallpapercolor/drivers/  driver modules, loaded only while needed
 # Usage: ./install.sh            build, test, install and (re)start the service
 #        ./install.sh --no-start build, test and install only
-# Needs: cmake ninja stb tomlplusplus nlohmann-json cli11 sdbus-cpp doctest libwebp
+# Needs: cmake ninja stb tomlplusplus nlohmann-json cli11 sdbus-cpp doctest libjpeg-turbo libpng libwebp
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
@@ -13,6 +14,8 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 install -Dm755 build/src/wallpapercolor  "$HOME/.local/bin/wallpapercolor"
 install -Dm755 build/src/wallpapercolord "$HOME/.local/bin/wallpapercolord"
+rm -rf "$HOME/.local/lib/wallpapercolor/drivers"   # no module of an older build stays behind
+install -Dm755 -t "$HOME/.local/lib/wallpapercolor/drivers" build/src/drivers/wpc-driver-*.so
 install -Dm644 systemd/wallpapercolord.service "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/wallpapercolord.service"
 systemctl --user daemon-reload
 

@@ -23,7 +23,7 @@ everything is in the code.
 | Linux with **KDE Plasma** (tested on 6.8) and a systemd user session | The picture on screen comes from Plasma over D-Bus. |
 | **[OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub)** 0.9.4 or newer, running | It drives the Corsair devices (RAM, AIO, Commander Core fans…). WallpaperColor sends it colours through its built-in OpenRGB SDK server. Any other OpenRGB SDK server works too (OpenRGB itself listens on port 6742). |
 | Optional: a **Gigabyte motherboard with RGB Fusion 2** (USB controller `048d:5702` or `048d:8297`) | Its onboard lights and its ARGB headers are painted directly, with no extra program. |
-| glibc 2.39 or newer, x86-64 (Ubuntu 24.04, Fedora 40, Debian 13, Arch and newer) | For the prebuilt release. Building from source has no such limit. |
+| glibc 2.39 and libstdc++ from GCC 14 or newer, x86-64 (Ubuntu 24.04, Fedora 40, Debian 13, Arch and newer) | For the prebuilt release. Building from source has no such limit. |
 | Only to build from source: GCC 14 or newer (C++23; tested with GCC 16), CMake, Ninja, the libraries in [Build from source](#build-from-source) and internet on the first build | CMake downloads FTXUI (the terminal UI library) once. |
 
 ## Install
@@ -48,8 +48,9 @@ cd wallpapercolor-*-x86_64
 ./install.sh
 ```
 
-`install.sh` installs `~/.local/bin/wallpapercolor` and `~/.local/bin/wallpapercolord`, and
-enables and starts the `wallpapercolord` user service. It starts with your graphical session
+`install.sh` installs `~/.local/bin/wallpapercolor`, `~/.local/bin/wallpapercolord` and the
+driver modules in `~/.local/lib/wallpapercolor/drivers/`, and enables and starts the
+`wallpapercolord` user service. It starts with your graphical session
 from then on. `./install.sh --no-start` installs without starting it. To update, download the
 new release and run its `install.sh`.
 
@@ -76,13 +77,29 @@ sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=hidraw
 ### 4. Check it works
 
 ```sh
-wallpapercolor devices   # the devices OpenLinkHub exposes, and the motherboard
+wallpapercolor devices   # what every driver finds, zone by zone, and what each zone is
 wallpapercolor status    # what the service is doing
 ```
 
-If `devices` lists nothing, OpenRGB Integration is still off for every device (step 1).
+If the `openrgb` driver finds no devices, OpenRGB Integration is still off for every device
+(step 1).
 
-### 5. Optional: fans or strips on the motherboard's ARGB headers
+### 5. Choose what is painted
+
+Run `wallpapercolor` and press `d`: the Drivers page lists fans, pump, RAM, motherboard, ARGB
+headers… with what was found for each. Untick what WallpaperColor should leave alone. The
+service keeps a driver in memory only while something it paints is ticked: with RAM, pump and
+fans unticked, the `openrgb` driver isn't loaded at all. The same from the command line:
+
+```sh
+wallpapercolor drivers              # what is ticked, and which driver paints it
+wallpapercolor drivers off ram      # leave the RAM to OpenLinkHub
+wallpapercolor drivers on ram
+```
+
+Until you change something there, everything is painted.
+
+### 6. Optional: fans or strips on the motherboard's ARGB headers
 
 Until you describe them, each header is painted in one colour. To paint them LED by LED (a
 gradient around each fan), list the LEDs of every fan chained on each header in the config
@@ -101,10 +118,10 @@ fans are `"GRB"`.
 Install the build tools and libraries. On Arch / CachyOS:
 
 ```sh
-sudo pacman -S --needed base-devel cmake ninja stb libwebp tomlplusplus nlohmann-json cli11 sdbus-cpp doctest
+sudo pacman -S --needed base-devel cmake ninja stb libjpeg-turbo libpng libwebp tomlplusplus nlohmann-json cli11 sdbus-cpp doctest
 ```
 
-On other distributions, install the equivalents: stb (`stb_image.h`), libwebp, toml++,
+On other distributions, install the equivalents: stb (`stb_image.h`), libjpeg-turbo, libpng, libwebp, toml++,
 nlohmann-json, CLI11, sdbus-c++ 2.x and doctest. Then:
 
 ```sh
@@ -118,8 +135,8 @@ This `install.sh` builds, runs the tests and installs just like the release one 
 
 ### Making a release
 
-`packaging/release.sh` builds the portable tarball into `dist/`: every library except glibc and
-libsystemd is linked into the binaries (`-DWPC_PORTABLE=ON`). Pushing a tag that matches the
+`packaging/release.sh` builds the portable tarball into `dist/`: every library except glibc,
+libsystemd and zlib is linked into the binaries (`-DWPC_PORTABLE=ON`). Pushing a tag that matches the
 version in `CMakeLists.txt` makes GitHub Actions build it on Ubuntu 24.04 and publish the
 release:
 
@@ -139,9 +156,10 @@ Every command accepts `--config FILE` to use another config file
 | `wallpapercolor pause` | Stops sending colours; the devices keep the last ones. The service keeps running. |
 | `wallpapercolor resume` | Starts sending colours again (and sends the current ones). |
 | `wallpapercolor apply` | Sends the current wallpaper's colours again now. |
-| `wallpapercolor devices` | Lists the devices the OpenRGB server exposes, with their zones and LEDs, and the motherboard. |
-| `wallpapercolor set COLOUR...` | Paints every device once with one to three colours (`#rrggbb` or `rrggbb`). |
-| `wallpapercolor set --image PICTURE` | Paints every device once with the colours of a picture. |
+| `wallpapercolor devices` | Lists what every installed driver finds: devices, their zones and LEDs, what each zone is (fans, pump, RAM…) and whether it is painted. |
+| `wallpapercolor drivers` | Shows which components are painted and which driver paints each. `drivers on fans pump` / `drivers off ram` chooses them. |
+| `wallpapercolor set COLOUR...` | Paints every chosen component once with one to three colours (`#rrggbb` or `rrggbb`). |
+| `wallpapercolor set --image PICTURE` | Paints every chosen component once with the colours of a picture. |
 | `wallpapercolor extract PICTURE...` | Shows the colours that would be taken from pictures, without painting anything. `-p` / `--palette` also shows the palette they were picked from. |
 | `wallpapercolor config` | Prints the configuration in use, defaults included. |
 
@@ -171,6 +189,7 @@ applied by the service within a second.
 | `Enter` | On "+ Calibrate": add a calibration for the chosen device or zone |
 | `x` (twice) | On a calibration: remove it |
 | `w` | White test: everything turns white, to compare devices while adjusting calibrations; `w` again ends it |
+| `d` | The Drivers page: tick what is painted (`space`), look for hardware again (`r`), back (`Esc`) |
 | `p` | Pause or resume the service |
 | `a` | Send the colours again |
 | `q` / `Esc` | Quit (the service keeps running) |
@@ -197,12 +216,30 @@ min_share = 0.005       # colours covering less of the picture than this are ign
 palette_size = 10       # how many colours the picture is reduced to
 sample_size = 96        # the picture is shrunk to this many pixels per side first
 
-[openrgb]
+[components]        # what is painted; the Drivers page (d) writes this table
+fans = true
+pump = true
+ram = true
+motherboard = true      # the board's own lights
+argb = true             # what is plugged into the board's ARGB headers
+keyboard = true
+gpu = true
+strip = true            # LED strips
+other = true            # anything a driver can't name
+
+# When a zone is guessed wrong (`wallpapercolor devices` shows the guesses), say what it is.
+# Names match like calibrations (below); the first match wins.
+[[component]]
+device = "COMMANDER Core"
+zone = "H150i"              # optional: without it, every zone of the device
+is = "pump"
+
+# Each driver has its own table.
+[openrgb]           # driver `openrgb`: an OpenRGB SDK server (OpenLinkHub's)
 address = "127.0.0.1:6743"      # OpenLinkHub's OpenRGB server (OpenRGB itself: port 6742)
 client_name = "WallpaperColor"
 
-[motherboard]       # Gigabyte RGB Fusion 2
-enabled = true          # paint it too, when there is one and it can be used
+[motherboard]       # driver `fusion2`: Gigabyte RGB Fusion 2
 argb_order = "GRB"      # colour order of what is plugged into its ARGB headers
 argb_header1 = []       # LEDs of each fan or strip chained on ARGB header 1, e.g. [8, 8];
 argb_header2 = []       #   empty: the whole header gets one colour
@@ -236,7 +273,9 @@ journalctl --user -u wallpapercolord -f      # its log, live
 | `the service is not running` | `systemctl --user start wallpapercolord`; if it stops again, read `journalctl --user -u wallpapercolord`. |
 | `cannot reach the OpenRGB server` | OpenLinkHub is not running, or `enableOpenRGBTargetServer` is off (install step 1). The service retries on its own. |
 | A device is never painted | Turn on **OpenRGB Integration** for it in OpenLinkHub's web page. |
-| `cannot open the motherboard RGB controller … Permission denied` | Install the udev rule (install step 3), then restart the service. |
+| `fusion2: cannot open /dev/hidraw… Permission denied` | Install the udev rule (install step 3), then restart the service. Or untick Motherboard and ARGB headers on the Drivers page. |
+| A component is ticked but never painted | `wallpapercolor devices` shows what each zone was taken for. Correct a wrong guess with a `[[component]]` entry. |
+| `… is from another build: run install.sh again` | The driver modules and the programs come from different builds. Install again: it replaces all of them. |
 | Fans on the motherboard show the wrong colours | Set `argb_order` (`"GRB"`, `"RGB"`, …) under `[motherboard]`. |
 | One device's white looks yellow or blue next to the others | Add a calibration and tune it with the white test (`w` in the terminal UI). Some LEDs are simply weaker in one colour (Corsair ELITE fans are known for a yellowish white). |
 | The colours don't follow the wallpaper | `wallpapercolor status` shows the picture the service sees; `wallpapercolor apply` sends again. |
@@ -246,6 +285,7 @@ journalctl --user -u wallpapercolord -f      # its log, live
 ```sh
 systemctl --user disable --now wallpapercolord
 rm ~/.local/bin/wallpapercolor ~/.local/bin/wallpapercolord ~/.config/systemd/user/wallpapercolord.service
+rm -r ~/.local/lib/wallpapercolor                       # the driver modules
 sudo rm /etc/udev/rules.d/70-wallpapercolor.rules     # if you installed it
 rm -r ~/.config/wallpapercolor                          # your settings
 ```

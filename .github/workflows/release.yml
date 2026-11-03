@@ -21,7 +21,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-14 g++-14 ninja-build pkg-config libsystemd-dev libstb-dev
+          sudo apt-get install -y gcc-14 g++-14 ninja-build pkg-config libsystemd-dev libstb-dev zlib1g-dev nasm
 
       - name: Tag matches the project version
         if: startsWith(github.ref, 'refs/tags/')

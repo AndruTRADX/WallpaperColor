@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "core/arc.hpp"
+#include "shared/domain/colours/gradient.hpp"
 
 using namespace wpc;
 
