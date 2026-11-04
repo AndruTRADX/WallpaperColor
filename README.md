@@ -4,6 +4,10 @@ Paints your PC's RGB lighting with the colours of the wallpaper on screen, inclu
 slide of a KDE Plasma slideshow. When the wallpaper changes, the RAM, the AIO pump, the fans and
 the motherboard fade to its colours.
 
+## See DEV Notes
+
+DEV Notes: [What's' is this project even about](docs/ARCHITECTURE.md).
+
 - **`wallpapercolord`**: the background service. Light and event-driven: about 7.5 MB of RAM and
   no CPU while nothing changes.
 - **`wallpapercolor`**: a terminal UI to watch and configure it, plus commands. The service
