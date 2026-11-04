@@ -6,7 +6,7 @@ the motherboard fade to its colours.
 
 ## See DEV Notes
 
-DEV Notes: [What's' is this project even about](docs/ARCHITECTURE.md).
+DEV Notes: [What's' is this project even about](docs/DEV_NOTES.md).
 
 - **`wallpapercolord`**: the background service. Light and event-driven: about 7.5 MB of RAM and
   no CPU while nothing changes.
