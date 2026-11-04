@@ -18,6 +18,6 @@ And I think it's gone pretty well, I'm very happy with it and I use it on a dail
 
 I have no experience creating things like drivers or stuff, so, if you see that the architecture of the program resembles an API too much, well, that's because it does, since I have no idea of how the architecture for something like this should look, so this may be a side quest I make once I understand how to program better in C++, or, at all, for the record.
 
-Like I said, I'll be maintaining this project myself, as I get better at using C++, since I think it's a pretty interesting language, and might teach me a lot about how computers actually work (even though I know that conceptually, I presume).
+Like I said, I'll be maintaining this project myself, as I get better at using C++, since I think it's a pretty interesting language, and might teach me a lot about how computers actually work (even though I should know that conceptually, I presume).
 
 That's it, I'm definitely not going back to Windows, so I'll probably do more stuff like this for Linux in the future.
