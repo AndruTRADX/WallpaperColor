@@ -24,6 +24,7 @@ add_executable(wpc_tests
   test_ipc.cpp
   test_openrgb.cpp
   test_fusion2.cpp
+  test_razer.cpp
   test_modules.cpp
   test_kde.cpp
   test_settings.cpp
@@ -33,7 +34,7 @@ add_executable(wpc_tests
   test_terminal.cpp
 )
 target_link_libraries(wpc_tests PRIVATE wpc_daemon_infrastructure wpc_terminal_infrastructure
-  wpc_driver_openrgb wpc_driver_fusion2 wpc_png doctest::doctest)
+  wpc_driver_openrgb wpc_driver_fusion2 wpc_driver_razer wpc_png doctest::doctest)
 target_compile_definitions(wpc_tests PRIVATE
   WPC_TEST_MODULES="${CMAKE_CURRENT_BINARY_DIR}/modules"
   WPC_BUILT_MODULES="${PROJECT_BINARY_DIR}/src/drivers")

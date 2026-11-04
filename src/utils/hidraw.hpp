@@ -1,5 +1,5 @@
 // USB HID devices through /dev/hidraw*: finding one by its USB ids, and HID feature reports.
-// Used by drivers that talk to hardware directly (fusion2).
+// Used by drivers that talk to hardware directly (fusion2, razer).
 
 #pragma once
 
@@ -16,10 +16,13 @@ namespace wpc::hidraw {
 struct UsbId {
     uint16_t vendor;
     uint16_t product;
+    /// The USB interface to use, for devices with several (a keyboard has one for its keys and
+    /// another for its lights); -1: any.
+    int interface = -1;
 };
 
-/// The /dev/hidraw* of the first device with one of `ids`, found through /sys; nullopt if
-/// none is plugged in.
+/// The /dev/hidraw* of the first device with one of `ids` (and its interface, if given), found
+/// through /sys; nullopt if none is plugged in.
 std::optional<std::filesystem::path> find(std::span<const UsbId> ids);
 
 /// Opens it for reading and writing. Throws wpc::Error; on EACCES the message says which

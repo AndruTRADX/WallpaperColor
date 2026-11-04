@@ -15,6 +15,19 @@ namespace wpc::hidraw {
 
 namespace fs = std::filesystem;
 
+namespace {
+
+/// The USB interface number of a /sys/class/hidraw entry, or -1 if it isn't a USB device.
+int interface_number(const fs::path& entry) {
+    // device/ is the HID device; its parent is the USB interface, whose number is in hex.
+    std::ifstream file(entry / "device" / ".." / "bInterfaceNumber");
+    unsigned number = 0;
+    if (!(file >> std::hex >> number)) return -1;
+    return static_cast<int>(number);
+}
+
+}  // namespace
+
 std::optional<fs::path> find(std::span<const UsbId> ids) {
     std::error_code ec;
     for (const fs::directory_entry& entry : fs::directory_iterator("/sys/class/hidraw", ec)) {
@@ -26,7 +39,8 @@ std::optional<fs::path> find(std::span<const UsbId> ids) {
             for (UsbId id : ids) {
                 char wanted[18];  // "0000048D:00005702"
                 std::snprintf(wanted, sizeof wanted, "%08X:%08X", unsigned(id.vendor), unsigned(id.product));
-                if (line.ends_with(wanted)) {
+                if (line.ends_with(wanted) &&
+                    (id.interface < 0 || interface_number(entry.path()) == id.interface)) {
                     return fs::path("/dev") / entry.path().filename();
                 }
             }

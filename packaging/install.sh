@@ -6,7 +6,7 @@
 #   ~/.local/lib/wallpapercolor/drivers/  driver modules, loaded only while needed
 # Usage: ./install.sh              install and (re)start the service
 #        ./install.sh --no-start   install only
-#        ./install.sh --udev       also install the udev rule for Gigabyte RGB Fusion 2 (sudo)
+#        ./install.sh --udev       also install the udev rule for Gigabyte RGB Fusion 2 and Razer keyboards (sudo)
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 

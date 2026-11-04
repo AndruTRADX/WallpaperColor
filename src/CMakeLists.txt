@@ -45,6 +45,7 @@ target_link_libraries(wpc_drivers_host PUBLIC wpc_drivers_sdk PRIVATE ${CMAKE_DL
 
 add_subdirectory(drivers/openrgb)
 add_subdirectory(drivers/fusion2)
+add_subdirectory(drivers/razer)
 get_property(WPC_DRIVER_MODULES GLOBAL PROPERTY WPC_DRIVER_MODULES)
 add_custom_target(wpc_drivers ALL DEPENDS ${WPC_DRIVER_MODULES})
 

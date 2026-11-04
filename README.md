@@ -27,6 +27,7 @@ everything is in the code.
 | Linux with **KDE Plasma** (tested on 6.8) and a systemd user session | The picture on screen comes from Plasma over D-Bus. |
 | **[OpenLinkHub](https://github.com/jurkovic-nikola/OpenLinkHub)** 0.9.4 or newer, running | It drives the Corsair devices (RAM, AIO, Commander Core fans…). WallpaperColor sends it colours through its built-in OpenRGB SDK server. Any other OpenRGB SDK server works too (OpenRGB itself listens on port 6742). |
 | Optional: a **Gigabyte motherboard with RGB Fusion 2** (USB controller `048d:5702` or `048d:8297`) | Its onboard lights and its ARGB headers are painted directly, with no extra program. |
+| Optional: a **Razer Huntsman Mini** keyboard (USB `1532:0257`) | Its keys are painted directly, with no extra program (no openrazer or Synapse). |
 | glibc 2.39 and libstdc++ from GCC 14 or newer, x86-64 (Ubuntu 24.04, Fedora 40, Debian 13, Arch and newer) | For the prebuilt release. Building from source has no such limit. |
 | Only to build from source: GCC 14 or newer (C++23; tested with GCC 16), CMake, Ninja, the libraries in [Build from source](#build-from-source) and internet on the first build | CMake downloads FTXUI (the terminal UI library) once. |
 
@@ -62,10 +63,10 @@ Make sure `~/.local/bin` is in your `PATH`.
 
 To build it yourself instead, see [Build from source](#build-from-source).
 
-### 3. Optional: the motherboard's RGB
+### 3. Optional: the motherboard's RGB and the Razer keyboard
 
-Only for Gigabyte boards with RGB Fusion 2. A udev rule lets the person logged in use the
-controller, so the service doesn't need root. From the release folder:
+Only for Gigabyte boards with RGB Fusion 2 and the Razer Huntsman Mini. A udev rule lets the
+person logged in use them, so the service doesn't need root. From the release folder:
 
 ```sh
 ./install.sh --udev
@@ -248,6 +249,10 @@ argb_order = "GRB"      # colour order of what is plugged into its ARGB headers
 argb_header1 = []       # LEDs of each fan or strip chained on ARGB header 1, e.g. [8, 8];
 argb_header2 = []       #   empty: the whole header gets one colour
 
+[keyboard]          # driver `razer`: the Razer Huntsman Mini
+direction = "across"    # which way the colours run over the keys: "across" (left to right)
+                        #   or "down" (top row to bottom row)
+
 # Colour correction for LEDs that show colours wrong (e.g. a weak blue makes white look
 # yellow). One entry per device, or per zone of a device; the first match wins. Names match
 # partially and ignore case ("fan" matches "8-LED Series Fan").
@@ -278,6 +283,7 @@ journalctl --user -u wallpapercolord -f      # its log, live
 | `cannot reach the OpenRGB server` | OpenLinkHub is not running, or `enableOpenRGBTargetServer` is off (install step 1). The service retries on its own. |
 | A device is never painted | Turn on **OpenRGB Integration** for it in OpenLinkHub's web page. |
 | `fusion2: cannot open /dev/hidraw… Permission denied` | Install the udev rule (install step 3), then restart the service. Or untick Motherboard and ARGB headers on the Drivers page. |
+| `Razer keyboard: cannot open /dev/hidraw… Permission denied` | Install the udev rule (install step 3), then restart the service. Or untick Keyboard on the Drivers page. |
 | A component is ticked but never painted | `wallpapercolor devices` shows what each zone was taken for. Correct a wrong guess with a `[[component]]` entry. |
 | `… is from another build: run install.sh again` | The driver modules and the programs come from different builds. Install again: it replaces all of them. |
 | Fans on the motherboard show the wrong colours | Set `argb_order` (`"GRB"`, `"RGB"`, …) under `[motherboard]`. |

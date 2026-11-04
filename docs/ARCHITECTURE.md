@@ -266,6 +266,7 @@ src/
     host/services/                          module_catalog: finding, loading, creating drivers
     openrgb/                                an OpenRGB SDK server (OpenLinkHub's or OpenRGB's)
     fusion2/                                the Gigabyte RGB Fusion 2 board, over /dev/hidraw
+    razer/                                  the Razer Huntsman Mini keyboard, over /dev/hidraw
       domain/                               settings (its config table), zones
       application/contracts/                the protocol's service (with open, close, is_open)
       application/models/                   what the driver keeps between calls
@@ -455,8 +456,8 @@ happens, every thread sleeps in the kernel: 0 % CPU, about 2.5 MB of memory of i
 ### Drivers are modules
 
 The code that talks to hardware is in driver modules, one file each: `wpc-driver-openrgb.so`
-(OpenLinkHub: RAM, pump, fans) and `wpc-driver-fusion2.so` (the Gigabyte board and its ARGB
-headers). Neither program links them; both load them through `drivers/host` (behind their
+(OpenLinkHub: RAM, pump, fans), `wpc-driver-fusion2.so` (the Gigabyte board and its ARGB
+headers) and `wpc-driver-razer.so` (the Razer Huntsman Mini keyboard). Neither program links them; both load them through `drivers/host` (behind their
 `contracts/external/driver_modules.hpp`) from `~/.local/lib/wallpapercolor/drivers/`:
 
 - the **service** keeps a module loaded only while one of its components (`[components]`,

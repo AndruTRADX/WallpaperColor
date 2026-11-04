@@ -79,7 +79,7 @@ TEST_CASE("the real driver modules load and unload") {
     CHECK(problems.empty());
     std::vector<std::string> names;
     for (const InstalledModule& m : modules) names.push_back(m.name);
-    CHECK(names == std::vector<std::string>{"fusion2", "openrgb"});
+    CHECK(names == std::vector<std::string>{"fusion2", "openrgb", "razer"});
     for (const InstalledModule& m : modules) {
         CAPTURE(m.name);
         {
