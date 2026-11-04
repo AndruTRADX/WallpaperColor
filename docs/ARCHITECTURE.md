@@ -245,7 +245,8 @@ src/
       features/                             load_settings, show_settings, edit_settings,
                                             save_settings, service_status, control_service,
                                             extract_colours, list_devices, detect_hardware,
-                                            set_colours, choose_components, preview_devices
+                                            set_colours, choose_components, driver_options,
+                                            preview_devices
       contracts/                            settings_editor
       contracts/external/                   service_socket, message_codec, driver_modules,
                                             pictures, settings_file

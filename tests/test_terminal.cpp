@@ -5,6 +5,7 @@
 #include <format>
 
 #include "terminal/application/features/choose_components/choose_components.hpp"
+#include "terminal/application/features/driver_options/driver_options.hpp"
 #include "terminal/application/features/list_devices/list_devices.hpp"
 #include "terminal/application/features/preview_devices/preview_devices.hpp"
 #include "terminal/application/features/save_settings/save_settings.hpp"
@@ -125,6 +126,11 @@ struct TextEditor final : SettingsEditor {
     bool set_components(const std::array<bool, ALL_COMPONENTS.size()>&) override { return true; }
     bool set_float(std::string_view, std::string_view, double, int) override { return true; }
     bool set_integer(std::string_view, std::string_view, long) override { return true; }
+    bool set_string(std::string_view table, std::string_view key, std::string_view value) override {
+        strings.push_back(std::format("[{}] {} = {}", table, key, value));
+        return true;
+    }
+    std::vector<std::string> strings;
     bool set_gain(size_t, int, double) override { return true; }
     bool add_calibration(std::string_view, std::optional<std::string_view>) override { return true; }
     bool remove_calibration(size_t) override { return true; }
@@ -140,4 +146,28 @@ TEST_CASE("saving says when the colours must be taken from the picture again") {
     CHECK_FALSE(save_settings(editor, format, Config{}).extract_changed);  // only the fade changed
     editor.body = "[extract]\nmin_saturation = 0.3\n";
     CHECK(save_settings(editor, format, Config{}).extract_changed);
+}
+
+TEST_CASE("the drivers' settings: their values, the default, and the next choice") {
+    std::vector<DriverModule> installed = {
+        DriverModule{"strip", "strip", {Component::Strip}},  // offers nothing
+        DriverModule{"keys", "keyboard", {Component::Keyboard}, {ModuleOption{"direction", "Direction", {"across", "down"}, ""}}},
+    };
+    Config config;
+    std::vector<DriverOptionValue> options = driver_options(installed, config);
+    REQUIRE(options.size() == 1);
+    CHECK(options[0].driver == "keys");
+    CHECK(options[0].value == "across");  // the table says nothing: the first choice
+
+    config.drivers.tables["keyboard"] = DriverSettings("keyboard", {{"direction", std::string("down")}});
+    options = driver_options(installed, config);
+    CHECK(options[0].value == "down");
+
+    TextEditor editor;
+    CHECK(cycle_driver_option(editor, options[0], 1));   // down → across (round)
+    CHECK(cycle_driver_option(editor, options[0], -1));  // down → across (back)
+    options[0].value = "sideways";                        // not a choice: the first one
+    CHECK(cycle_driver_option(editor, options[0], 1));
+    CHECK(editor.strings == std::vector<std::string>{"[keyboard] direction = across", "[keyboard] direction = across",
+                                                     "[keyboard] direction = across"});
 }

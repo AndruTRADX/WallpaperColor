@@ -14,6 +14,12 @@ namespace wpc::fusion2 {
 
 inline constexpr Component COMPONENTS[] = {Component::Motherboard, Component::Argb};
 
+/// Every order of R, G and B; GRB (most fans) first, the default of domain/settings.
+inline constexpr const char* ARGB_ORDERS[] = {"GRB", "RGB", "RBG", "GBR", "BRG", "BGR"};
+inline constexpr DriverOption OPTIONS[] = {
+    {"argb_order", "ARGB order", ARGB_ORDERS, "change it if the ARGB fans show wrong colours"},
+};
+
 class BoardDriver final : public Driver {
 public:
     /// `board`: the board's service (module.cpp gives the real one).

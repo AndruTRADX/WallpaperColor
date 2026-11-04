@@ -8,6 +8,7 @@
 #include "drivers/razer/domain/settings.hpp"
 #include "drivers/razer/domain/zones.hpp"
 #include "drivers/razer/infrastructure/services/keyboard.hpp"
+#include "drivers/razer/presentation/driver.hpp"
 #include "utils/error.hpp"
 
 using namespace wpc;
@@ -21,6 +22,10 @@ TEST_CASE("keyboard settings") {
     CHECK(read({{"direction", std::string("across")}}).direction == razer::Direction::Across);
     CHECK_THROWS_AS(read({{"direction", std::string("sideways")}}), Error);
     CHECK_THROWS_AS(read({{"direction", 1.0}}), Error);
+
+    // Every choice the Drivers page offers is one the driver reads; the first is the default.
+    for (const char* choice : razer::DIRECTIONS) CHECK_NOTHROW(read({{"direction", std::string(choice)}}));
+    CHECK(read({{"direction", std::string(razer::DIRECTIONS[0])}}).direction == read({}).direction);
 }
 
 TEST_CASE("the keyboard is one line of keys") {

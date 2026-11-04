@@ -16,6 +16,7 @@ const wpc::DriverInfo INFO = {
     .config_table = "motherboard",
     .components = wpc::fusion2::COMPONENTS,
     .create = create,
+    .options = wpc::fusion2::OPTIONS,
 };
 
 }  // namespace

@@ -27,6 +27,8 @@ public:
     virtual bool set_float(std::string_view table, std::string_view key, double value, int decimals) = 0;
     /// `key = value` in `[table]`, a whole number.
     virtual bool set_integer(std::string_view table, std::string_view key, long value) = 0;
+    /// `key = "value"` in `[table]`.
+    virtual bool set_string(std::string_view table, std::string_view key, std::string_view value) = 0;
     /// Channel `channel` (0 red, 1 green, 2 blue) of calibration entry `index`, 0-1.
     virtual bool set_gain(size_t index, int channel, double value) = 0;
     /// Adds a `[[calibration]]` entry at the end with gains 1, 1, 1.

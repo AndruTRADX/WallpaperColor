@@ -105,7 +105,10 @@ std::vector<InstalledModule> ModuleCatalog::installed(std::vector<std::string>& 
             try {
                 Module m = Module::load(file);  // unloaded again at the end of this block
                 const DriverInfo& info = m.info();
-                r.module = InstalledModule{info.name, info.config_table, {info.components.begin(), info.components.end()}, file};
+                r.module = InstalledModule{info.name, info.config_table, {info.components.begin(), info.components.end()}, file, {}};
+                for (const DriverOption& o : info.options) {
+                    r.module->options.push_back(InstalledOption{o.key, o.label, {o.choices.begin(), o.choices.end()}, o.hint});
+                }
             } catch (const Error& e) {
                 r.problem = e.what();
             }

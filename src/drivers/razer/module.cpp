@@ -16,6 +16,7 @@ const wpc::DriverInfo INFO = {
     .config_table = "keyboard",
     .components = wpc::razer::COMPONENTS,
     .create = create,
+    .options = wpc::razer::OPTIONS,
 };
 
 }  // namespace

@@ -36,6 +36,8 @@ struct ListedDriver {
     /// Why it couldn't look, if it couldn't.
     std::optional<std::string> error;
     std::vector<ListedDevice> devices;
+    /// The settings the Drivers page offers for it.
+    std::vector<ModuleOption> options = {};
 };
 
 struct DeviceList {

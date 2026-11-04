@@ -226,6 +226,20 @@ per_key = true
 wrong type throws `wpc::Error`; a key the driver never reads is logged as an unknown setting,
 so typos show up.
 
+A setting that is one of a few words can also be shown on the terminal's Drivers page, under
+the components, where `←` `→` changes it. List it in `DriverInfo::options` (the first choice is
+the default) next to `COMPONENTS` in `presentation/driver.hpp`:
+
+```cpp
+inline constexpr const char* LAYOUTS[] = {"ansi", "iso"};  // as domain/settings reads them
+inline constexpr DriverOption OPTIONS[] = {
+    {"layout", "Layout", LAYOUTS, "the shape of the Enter key"},
+};
+```
+
+and `.options = wpc::acmek1::OPTIONS` in `INFO`. Test that every choice is one `read_settings`
+accepts, as `test_razer.cpp` does.
+
 ## The rules every driver follows
 
 Besides the layers:

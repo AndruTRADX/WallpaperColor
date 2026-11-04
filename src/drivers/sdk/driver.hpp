@@ -39,6 +39,16 @@ public:
     virtual void show(size_t device, std::span<const ZoneFrame> zones) = 0;
 };
 
+/// A setting of the driver's config table that the terminal's Drivers page lets the user choose:
+/// one of a few words, written as a string. The first choice is what the driver uses when the
+/// table doesn't say.
+struct DriverOption {
+    const char* key;    // "direction": its key in the driver's table
+    const char* label;  // "Direction": its name on the Drivers page
+    std::span<const char* const> choices;
+    const char* hint;   // what it changes, in a few words
+};
+
 /// What a module tells the programs about its driver.
 struct DriverInfo {
     /// WPC_BUILD_ID of the build the module comes from. The programs refuse any other: a
@@ -52,6 +62,8 @@ struct DriverInfo {
     std::span<const Component> components;
     /// Creates the driver. Reads its settings only: opens nothing, starts nothing.
     std::unique_ptr<Driver> (*create)(const DriverSettings& settings);
+    /// The settings the Drivers page offers; none if it offers none.
+    std::span<const DriverOption> options = {};
 };
 
 }  // namespace wpc

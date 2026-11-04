@@ -94,7 +94,9 @@ If the `openrgb` driver finds no devices, OpenRGB Integration is still off for e
 Run `wallpapercolor` and press `d`: the Drivers page lists fans, pump, RAM, motherboard, ARGB
 headers… with what was found for each. Untick what WallpaperColor should leave alone. The
 service keeps a driver in memory only while something it paints is ticked: with RAM, pump and
-fans unticked, the `openrgb` driver isn't loaded at all. The same from the command line:
+fans unticked, the `openrgb` driver isn't loaded at all. Under the components are the drivers'
+own settings (the ARGB fans' colour order, the keyboard's direction): `←` `→` changes them. The
+same from the command line:
 
 ```sh
 wallpapercolor drivers              # what is ticked, and which driver paints it
@@ -194,7 +196,7 @@ applied by the service within a second.
 | `Enter` | On "+ Calibrate": add a calibration for the chosen device or zone |
 | `x` (twice) | On a calibration: remove it |
 | `w` | White test: everything turns white, to compare devices while adjusting calibrations; `w` again ends it |
-| `d` | The Drivers page: tick what is painted (`space`), look for hardware again (`r`), back (`Esc`) |
+| `d` | The Drivers page: tick what is painted (`space`), change a driver's setting such as the keyboard's direction (`←` `→`), look for hardware again (`r`), back (`Esc`) |
 | `p` | Pause or resume the service |
 | `a` | Send the colours again |
 | `q` / `Esc` | Quit (the service keeps running) |

@@ -46,12 +46,22 @@ private:
     const DriverInfo* info_ = nullptr;
 };
 
+/// A DriverOption, copied out of its module (which is unloaded once it has been read).
+struct InstalledOption {
+    std::string key;
+    std::string label;
+    std::vector<std::string> choices;
+    std::string hint;
+};
+
 /// An installed module, before it is loaded.
 struct InstalledModule {
     std::string name;          // "fusion2"
     std::string config_table;  // "motherboard": its table in config.toml
     std::vector<Component> components;
     std::filesystem::path file;
+    /// The settings its Drivers page offers.
+    std::vector<InstalledOption> options;
 };
 
 /// A driver created from its module.

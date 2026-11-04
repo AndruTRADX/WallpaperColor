@@ -5,6 +5,7 @@
 #include "drivers/fusion2/application/features/list_devices/list_devices.hpp"
 #include "drivers/fusion2/application/features/show_frame/show_frame.hpp"
 #include "drivers/fusion2/domain/settings.hpp"
+#include "drivers/fusion2/presentation/driver.hpp"
 #include "utils/error.hpp"
 
 using namespace wpc;
@@ -25,6 +26,10 @@ TEST_CASE("motherboard settings") {
     CHECK_THROWS_AS(read({{"argb_order", std::string("RRB")}}), Error);
     CHECK_THROWS_AS(read({{"argb_header1", 8.0}}), Error);              // not a list
     CHECK_THROWS_AS(read({{"argb_header1", std::vector<double>{8.5}}}), Error);
+
+    // Every choice the Drivers page offers is one the driver reads; the first is the default.
+    for (const char* order : fusion2::ARGB_ORDERS) CHECK(read({{"argb_order", std::string(order)}}).argb_order == order);
+    CHECK(fusion2::ARGB_ORDERS[0] == defaults.argb_order);
 
     DriverSettings old("motherboard", {{"enabled", false}});  // from before [components]
     fusion2::read_settings(old);

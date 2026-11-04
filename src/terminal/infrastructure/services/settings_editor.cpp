@@ -192,6 +192,10 @@ bool TomlSettingsEditor::set_integer(std::string_view table, std::string_view ke
     return set_value(table, key, std::to_string(value));
 }
 
+bool TomlSettingsEditor::set_string(std::string_view table, std::string_view key, std::string_view value) {
+    return set_value(table, key, toml_string(value));
+}
+
 bool TomlSettingsEditor::replace_value(size_t line, size_t value_start, const std::string& value) {
     std::optional<ValueSpan> span = value_span(lines_, line, value_start);
     if (!span) return false;

@@ -1,7 +1,7 @@
 // The terminal UI's state and its two pages. Its methods are spread by page:
 //   app.cpp           the loop, refreshing, keys every page shares
 //   home_page.cpp     the service, the devices' preview, the settings
-//   drivers_page.cpp  which components are painted
+//   drivers_page.cpp  which components are painted, and the drivers' settings
 // What a key changes is done by a feature (terminal/application/features); this only draws and
 // turns keys into feature calls.
 
@@ -19,6 +19,7 @@
 #include "shared/domain/settings/settings.hpp"
 #include "shared/models/protocol/messages.hpp"
 #include "terminal/application/features/detect_hardware/detect_hardware.hpp"
+#include "terminal/application/features/driver_options/driver_options.hpp"
 #include "terminal/application/features/load_settings/load_settings.hpp"
 #include "terminal/application/models/terminal_parts.hpp"
 
@@ -66,6 +67,8 @@ private:
 
     // drivers_page.cpp
     void open_drivers_page();
+    /// The drivers' settings shown under the components (from the last detection).
+    std::vector<DriverOptionValue> options() const;
     void on_drivers_key(const ui::Event& event);
     ui::Element draw_drivers() const;
 

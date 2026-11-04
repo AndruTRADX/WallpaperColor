@@ -131,3 +131,11 @@ TEST_CASE("a `calibration` key in another table doesn't stop editing the calibra
     CHECK(s.text().find("gain = [1.0, 1.0, 0.5]") != std::string::npos);
     CHECK_FALSE(TomlSettingsEditor::from_text("calibration = [{ device = \"x\" }]\n").set_gain(0, 0, 0.5));
 }
+
+TEST_CASE("a driver's setting is written as a string in its table") {
+    TomlSettingsEditor s = TomlSettingsEditor::from_text("[keyboard]\ndirection = \"across\"  # which way\n");
+    CHECK(s.set_string("keyboard", "direction", "down"));
+    CHECK(s.text() == "[keyboard]\ndirection = \"down\"  # which way\n");
+    CHECK(s.set_string("motherboard", "argb_order", "RGB"));
+    CHECK(config_of(s).drivers.of("motherboard").string("argb_order") == "RGB");
+}

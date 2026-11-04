@@ -7,7 +7,7 @@ namespace wpc {
 DeviceList list_devices(DriverModules& drivers, const Config& config) {
     DeviceList out;
     for (const DriverModule& m : drivers.installed(out.problems)) {
-        ListedDriver driver{m.name, m.config_table, m.components, std::nullopt, {}};
+        ListedDriver driver{m.name, m.config_table, m.components, std::nullopt, {}, m.options};
         std::vector<Device> devices;
         try {
             drivers.load(m.name, config.drivers.of(m.config_table));

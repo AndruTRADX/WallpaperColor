@@ -35,6 +35,7 @@ public:
     bool set_components(const std::array<bool, ALL_COMPONENTS.size()>& chosen) override;
     bool set_float(std::string_view table, std::string_view key, double value, int decimals) override;
     bool set_integer(std::string_view table, std::string_view key, long value) override;
+    bool set_string(std::string_view table, std::string_view key, std::string_view value) override;
     /// An entry that does not exist is ignored (returns true).
     bool set_gain(size_t index, int channel, double value) override;
     /// No `zone`: every zone.

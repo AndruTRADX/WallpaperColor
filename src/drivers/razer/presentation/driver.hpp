@@ -14,6 +14,11 @@ namespace wpc::razer {
 
 inline constexpr Component COMPONENTS[] = {Component::Keyboard};
 
+inline constexpr const char* DIRECTIONS[] = {"across", "down"};  // as domain/settings reads them
+inline constexpr DriverOption OPTIONS[] = {
+    {"direction", "Direction", DIRECTIONS, "across: left to right; down: top to bottom"},
+};
+
 class KeyboardDriver final : public Driver {
 public:
     /// `keyboard`: the keyboard's service (module.cpp gives the real one).

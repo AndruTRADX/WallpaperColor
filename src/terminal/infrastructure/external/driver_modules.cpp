@@ -9,7 +9,11 @@ namespace wpc {
 std::vector<DriverModule> HostDriverModules::installed(std::vector<std::string>& problems) {
     found_ = catalog_.installed(problems);
     std::vector<DriverModule> out;
-    for (const InstalledModule& m : found_) out.push_back(DriverModule{m.name, m.config_table, m.components});
+    for (const InstalledModule& m : found_) {
+        DriverModule module{m.name, m.config_table, m.components};
+        for (const InstalledOption& o : m.options) module.options.push_back(ModuleOption{o.key, o.label, o.choices, o.hint});
+        out.push_back(std::move(module));
+    }
     return out;
 }
 

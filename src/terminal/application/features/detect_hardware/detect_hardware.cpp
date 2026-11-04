@@ -12,7 +12,7 @@ Detection detect_hardware(DriverModules& drivers, const Config& config) {
     DeviceList list = list_devices(drivers, config);
     out.problems = list.problems;
     for (const ListedDriver& driver : list.drivers) {
-        out.modules.push_back(DriverModule{driver.name, driver.config_table, driver.components});
+        out.modules.push_back(DriverModule{driver.name, driver.config_table, driver.components, driver.options});
         if (driver.error) out.problems.push_back(std::format("{}: {}", driver.name, *driver.error));
         for (Component c : ALL_COMPONENTS) {
             std::vector<std::string>& found = out.found[static_cast<size_t>(c)];

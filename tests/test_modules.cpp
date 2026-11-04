@@ -80,6 +80,13 @@ TEST_CASE("the real driver modules load and unload") {
     std::vector<std::string> names;
     for (const InstalledModule& m : modules) names.push_back(m.name);
     CHECK(names == std::vector<std::string>{"fusion2", "openrgb", "razer"});
+    // What the Drivers page offers, copied out of the modules.
+    REQUIRE(modules[2].options.size() == 1);
+    CHECK(modules[2].options[0].key == "direction");
+    CHECK(modules[2].options[0].choices == std::vector<std::string>{"across", "down"});
+    REQUIRE(modules[0].options.size() == 1);
+    CHECK(modules[0].options[0].key == "argb_order");
+    CHECK(modules[1].options.empty());
     for (const InstalledModule& m : modules) {
         CAPTURE(m.name);
         {
