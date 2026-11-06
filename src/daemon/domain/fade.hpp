@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <span>
 #include <vector>
 
 #include "shared/domain/colours/color.hpp"
@@ -24,5 +25,9 @@ const std::vector<Rgb>& fade_start(const std::vector<Rgb>* last_sent, const std:
 
 /// Frame `frame` (1 … `frames`) between `from` and `to`, eased in and out. The last one is `to`.
 std::vector<Rgb> fade_frame(const std::vector<Rgb>& from, const std::vector<Rgb>& to, int frame, int frames);
+
+/// fade_frame() written over `out` (the size of `to`, `from` too), so a fade reuses one buffer
+/// for all its frames. True if `out` changed: false means it already held this frame.
+bool fade_frame_into(std::span<const Rgb> from, std::span<const Rgb> to, int frame, int frames, std::span<Rgb> out);
 
 }  // namespace wpc

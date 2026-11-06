@@ -27,16 +27,33 @@ std::string key_of(const fs::path& picture, std::optional<int64_t> mtime, const 
                        x.pastel_gain);
 }
 
+/// One output during a fade: where it starts, and its frame with the zones over it. Made once
+/// per paint; every frame is written over the same buffer.
+struct Fading {
+    std::vector<Rgb> from;
+    std::vector<Rgb> frame;
+    std::vector<ZoneFrame> zones;  // spans over `frame`
+};
+
 /// Shows the fade's frames on every output, `FADE_FPS` a second; a driver that fails is left
-/// out of the next frames, its problem in `failed`.
+/// out of the next frames, its problem in `failed`. Every output gets the first frame; after
+/// it, an output whose frame is the same as the one it got last is not sent again (it shows it).
 void fade(DriversState& d, DriverModules& drivers, Clock& clock, const std::vector<Output>& outputs, double seconds,
           std::map<std::string, std::string>& failed) {
-    std::vector<std::vector<Rgb>> from;
+    std::vector<Fading> fading(outputs.size());
     bool changes = false;
-    for (const Output& o : outputs) {
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        const Output& o = outputs[i];
+        Fading& out = fading[i];
         auto last = d.shown.find(o.key);
-        from.push_back(fade_start(last != d.shown.end() ? &last->second : nullptr, o.reported, o.target));
-        changes = changes || from.back() != o.target;
+        out.from = fade_start(last != d.shown.end() ? &last->second : nullptr, o.reported, o.target);
+        changes = changes || out.from != o.target;
+        out.frame.resize(o.target.size());
+        size_t at = 0;
+        for (auto [zone, count] : o.zones) {
+            out.zones.push_back(ZoneFrame{zone, std::span<const Rgb>(out.frame).subspan(at, count)});
+            at += count;
+        }
     }
 
     int frames = fade_frames(seconds, changes);
@@ -45,15 +62,11 @@ void fade(DriversState& d, DriverModules& drivers, Clock& clock, const std::vect
         for (size_t i = 0; i < outputs.size(); ++i) {
             const Output& o = outputs[i];
             if (failed.contains(o.driver)) continue;
-            std::vector<Rgb> frame = fade_frame(from[i], o.target, f, frames);
-            std::vector<ZoneFrame> zones;
-            size_t at = 0;
-            for (auto [zone, count] : o.zones) {
-                zones.push_back(ZoneFrame{zone, std::span<const Rgb>(frame).subspan(at, count)});
-                at += count;
-            }
+            Fading& out = fading[i];
+            bool changed = fade_frame_into(out.from, o.target, f, frames, out.frame);
+            if (f > 1 && !changed) continue;
             try {
-                drivers.show(o.driver, o.device, zones);
+                drivers.show(o.driver, o.device, out.zones);
             } catch (const Error& e) {
                 failed[o.driver] = e.what();
             }

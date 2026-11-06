@@ -21,12 +21,24 @@ const std::vector<Rgb>& fade_start(const std::vector<Rgb>* last_sent, const std:
 }
 
 std::vector<Rgb> fade_frame(const std::vector<Rgb>& from, const std::vector<Rgb>& to, int frame, int frames) {
-    if (frame >= frames) return to;
-    float t = static_cast<float>(frame) / static_cast<float>(frames);
-    t = t * t * (3.0f - 2.0f * t);  // ease in and out
     std::vector<Rgb> out(to.size());
-    for (size_t led = 0; led < out.size(); ++led) out[led] = mix(from[led], to[led], t);
+    fade_frame_into(from, to, frame, frames, out);
     return out;
+}
+
+bool fade_frame_into(std::span<const Rgb> from, std::span<const Rgb> to, int frame, int frames, std::span<Rgb> out) {
+    float t = 1.0f;
+    if (frame < frames) {
+        t = static_cast<float>(frame) / static_cast<float>(frames);
+        t = t * t * (3.0f - 2.0f * t);  // ease in and out
+    }
+    bool changed = false;
+    for (size_t led = 0; led < out.size(); ++led) {
+        Rgb c = frame < frames ? mix(from[led], to[led], t) : to[led];
+        changed = changed || c != out[led];
+        out[led] = c;
+    }
+    return changed;
 }
 
 }  // namespace wpc

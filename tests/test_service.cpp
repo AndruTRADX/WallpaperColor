@@ -9,7 +9,9 @@
 #include "daemon/application/events/hardware_changed.hpp"
 #include "daemon/application/events/settings_changed.hpp"
 #include "daemon/application/features/exchange_messages/exchange_messages.hpp"
+#include "daemon/application/features/paint_wallpaper/paint_wallpaper.hpp"
 #include "daemon/application/features/report_status/report_status.hpp"
+#include "daemon/domain/fade.hpp"
 #include "daemon/presentation/requests/requests.hpp"
 #include "daemon/presentation/service_loop/service_loop.hpp"
 #include "utils/error.hpp"
@@ -516,4 +518,54 @@ TEST_CASE("requests run their feature") {
     CHECK_FALSE(bad.request);
     CHECK(bad.problem == "bad request: unknown command");
     CHECK(read_request(s.codec, "status").request == ipc::Request::Status);
+}
+
+namespace {
+
+/// Two devices, a fan and a RAM stick; remembers every frame each one got.
+struct TwoDevices final : DriverModules {
+    std::map<size_t, std::vector<std::vector<Rgb>>> shown;  // device → its frames
+    std::vector<DriverModule> installed(std::vector<std::string>&) override { return {}; }
+    std::vector<std::string> load(const std::string&, const DriverSettings&) override { return {}; }
+    void unload(const std::string&) override {}
+    std::vector<Device> devices(const std::string&) override {
+        return {Device{"fan", "Fan", {Zone{"Ring", 8, Component::Fans, Shape::Ring}}, {}},
+                Device{"ram", "RAM",
+                       {Zone{"Top", 3, Component::Ram, Shape::Line}, Zone{"Bottom", 2, Component::Ram, Shape::Line}},
+                       {}}};
+    }
+    void show(const std::string&, size_t device, std::span<const ZoneFrame> zones) override {
+        std::vector<Rgb> frame;
+        for (const ZoneFrame& z : zones) frame.insert(frame.end(), z.colours.begin(), z.colours.end());
+        shown[device].push_back(std::move(frame));
+    }
+    std::string location() override { return "/fake/drivers"; }
+};
+
+}  // namespace
+
+TEST_CASE("a fade sends a device its first frame, then only the frames that change it") {
+    TwoDevices drivers;
+    FakeClock clock;
+    ServiceState state;
+    state.drivers.loaded["two"] = DriverSettings();
+    state.config.led.fade = 0.6;
+    std::vector<Rgb> stops = {Rgb{255, 0, 0}, Rgb{0, 0, 255}, Rgb{0, 255, 0}};
+    paint_colours(state, drivers, clock, stops, Mode::Arc);
+    REQUIRE(drivers.shown[0].size() == 1);  // nothing shown before: no fade
+    std::vector<Rgb> fan = drivers.shown[0].back();
+    std::vector<Rgb> ram = drivers.shown[1].back();
+
+    // Only the RAM changes: it fades, frame by frame; the fan is sent its colours once, again.
+    state.config.calibration.entries.push_back(Calibration{"RAM", std::nullopt, {0.5, 1.0, 1.0}});
+    drivers.shown.clear();
+    TimePoint start = clock.now();
+    paint_colours(state, drivers, clock, stops, Mode::Arc);
+    CHECK(drivers.shown[0] == std::vector<std::vector<Rgb>>{fan});
+    REQUIRE(drivers.shown[1].size() > 1);
+    CHECK(drivers.shown[1].size() <= static_cast<size_t>(fade_frames(0.6, true)));
+    for (size_t f = 1; f < drivers.shown[1].size(); ++f) CHECK(drivers.shown[1][f] != drivers.shown[1][f - 1]);
+    CHECK(drivers.shown[1].back() != ram);
+    CHECK(drivers.shown[1].back() == state.drivers.shown.at("two ram"));  // it ends on the new colours
+    CHECK(clock.now() - start == (fade_frames(0.6, true) - 1) * std::chrono::milliseconds(1000 / FADE_FPS));
 }

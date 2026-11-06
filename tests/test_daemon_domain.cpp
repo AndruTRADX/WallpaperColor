@@ -77,3 +77,17 @@ TEST_CASE("fades") {
     CHECK(fade_frame(sent, target, 15, 15) == target);
     CHECK(fade_frame(sent, target, 7, 15)[0].r > 1);
 }
+
+TEST_CASE("a fade frame written over a buffer is the same frame, and says whether it changed") {
+    std::vector<Rgb> from = {Rgb{10, 200, 30}, Rgb{0, 0, 0}, WHITE};
+    std::vector<Rgb> to = {Rgb{250, 20, 90}, Rgb{0, 0, 0}, Rgb{0, 0, 255}};
+    std::vector<Rgb> buffer(to.size());
+    for (int f = 1; f <= 15; ++f) {
+        std::vector<Rgb> before = buffer;
+        bool changed = fade_frame_into(from, to, f, 15, buffer);
+        CHECK(buffer == fade_frame(from, to, f, 15));
+        CHECK(changed == (buffer != before));
+    }
+    CHECK(buffer == to);
+    CHECK_FALSE(fade_frame_into(from, to, 15, 15, buffer));  // the same frame again
+}
