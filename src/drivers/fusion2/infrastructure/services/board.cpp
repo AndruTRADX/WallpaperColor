@@ -1,6 +1,7 @@
 #include "drivers/fusion2/infrastructure/services/board.hpp"
 
 #include <algorithm>
+#include <span>
 
 #include "utils/error.hpp"
 #include "utils/hidraw.hpp"
@@ -96,8 +97,12 @@ uint32_t Board::header_leds(int header) const {
 
 void Board::set_header(int header, const std::vector<Rgb>& colours) {
     // An unknown count: the one colour on every LED the header can drive.
-    std::vector<Rgb> leds = colours;
-    if (header_fans_[header].empty() && !colours.empty()) leds.assign(DEFAULT_HEADER_LEDS, colours[0]);
+    std::array<Rgb, DEFAULT_HEADER_LEDS> one_colour;
+    std::span<const Rgb> leds = colours;
+    if (header_fans_[header].empty() && !colours.empty()) {
+        one_colour.fill(colours[0]);
+        leds = one_colour;
+    }
 
     // Reports of up to 19 LEDs: command, byte offset (2 bytes), byte count, then the colours.
     for (size_t first = 0; first < leds.size(); first += LEDS_PER_REPORT) {

@@ -68,11 +68,15 @@ private:
     explicit Client(Fd socket) : socket_(std::move(socket)) {}
 
     void send(uint32_t device, uint32_t id, std::span<const uint8_t> payload);
+    /// Starts packet `id` for `device` in out_: its header, for a payload of `payload_size` bytes.
+    void start_packet(uint32_t device, uint32_t id, size_t payload_size);
     /// Reads packets until one with id `want` arrives; device-list notifications are skipped.
     std::vector<uint8_t> receive(uint32_t want);
 
     Fd socket_;
     uint32_t protocol_ = 0;
+    /// The packet being sent, kept between packets so that sending allocates nothing.
+    std::vector<uint8_t> out_;
 };
 
 }  // namespace wpc::openrgb

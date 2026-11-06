@@ -13,6 +13,8 @@ struct ServerState {
     ClientSettings settings;
     /// From the last list_devices(): what show_frame()'s device numbers mean.
     std::vector<Controller> controllers;
+    /// How many zones each of them has as a device (classify()), so a frame needn't ask again.
+    std::vector<size_t> zone_counts;
 };
 
 }  // namespace wpc::openrgb

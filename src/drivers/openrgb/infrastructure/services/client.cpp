@@ -174,34 +174,38 @@ void Client::set_leds(uint32_t index, std::span<const Rgb> colors) {
     if (colors.size() > 0xFFFF) protocol_error(cat("too many LEDs: ", colors.size()));
     // size of the whole payload, LED count, then red, green, blue and a padding byte per LED
     size_t size = 4 + 2 + 4 * colors.size();
-    std::vector<uint8_t> payload;
-    payload.reserve(size);
-    put_u32(payload, static_cast<uint32_t>(size));
-    put_u16(payload, static_cast<uint16_t>(colors.size()));
-    for (Rgb c : colors) payload.insert(payload.end(), {c.r, c.g, c.b, 0});
-    send(index, packet::UPDATE_LEDS, payload);
+    start_packet(index, packet::UPDATE_LEDS, size);
+    put_u32(out_, static_cast<uint32_t>(size));
+    put_u16(out_, static_cast<uint16_t>(colors.size()));
+    for (Rgb c : colors) out_.insert(out_.end(), {c.r, c.g, c.b, 0});
+    write_all(socket_, out_);
 }
 
 void Client::set_zone_leds(uint32_t index, uint32_t zone, std::span<const Rgb> colors) {
     if (colors.size() > 0xFFFF) protocol_error(cat("too many LEDs: ", colors.size()));
     // the same as set_leds, with the zone number after the size
     size_t size = 4 + 4 + 2 + 4 * colors.size();
-    std::vector<uint8_t> payload;
-    payload.reserve(size);
-    put_u32(payload, static_cast<uint32_t>(size));
-    put_u32(payload, zone);
-    put_u16(payload, static_cast<uint16_t>(colors.size()));
-    for (Rgb c : colors) payload.insert(payload.end(), {c.r, c.g, c.b, 0});
-    send(index, packet::UPDATE_ZONE_LEDS, payload);
+    start_packet(index, packet::UPDATE_ZONE_LEDS, size);
+    put_u32(out_, static_cast<uint32_t>(size));
+    put_u32(out_, zone);
+    put_u16(out_, static_cast<uint16_t>(colors.size()));
+    for (Rgb c : colors) out_.insert(out_.end(), {c.r, c.g, c.b, 0});
+    write_all(socket_, out_);
+}
+
+void Client::start_packet(uint32_t device, uint32_t id, size_t payload_size) {
+    out_.clear();  // keeps its memory: a frame's packets need no allocation
+    out_.reserve(16 + payload_size);
+    out_.insert(out_.end(), {'O', 'R', 'G', 'B'});
+    put_u32(out_, device);
+    put_u32(out_, id);
+    put_u32(out_, static_cast<uint32_t>(payload_size));
 }
 
 void Client::send(uint32_t device, uint32_t id, std::span<const uint8_t> payload) {
-    std::vector<uint8_t> buffer = {'O', 'R', 'G', 'B'};
-    put_u32(buffer, device);
-    put_u32(buffer, id);
-    put_u32(buffer, static_cast<uint32_t>(payload.size()));
-    buffer.insert(buffer.end(), payload.begin(), payload.end());
-    write_all(socket_, buffer);
+    start_packet(device, id, payload.size());
+    out_.insert(out_.end(), payload.begin(), payload.end());
+    write_all(socket_, out_);
 }
 
 std::vector<uint8_t> Client::receive(uint32_t want) {

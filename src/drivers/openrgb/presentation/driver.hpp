@@ -22,7 +22,7 @@ class ServerDriver final : public Driver {
 public:
     /// `server`: the server's service (module.cpp gives the real one).
     ServerDriver(ClientSettings settings, std::unique_ptr<OpenRgbServer> server)
-        : server_(std::move(server)), state_{std::move(settings), {}} {}
+        : server_(std::move(server)), state_{std::move(settings), {}, {}} {}
 
     std::vector<Device> devices() override { return list_devices(*server_, state_); }
     void show(size_t device, std::span<const ZoneFrame> zones) override { show_frame(*server_, state_, device, zones); }

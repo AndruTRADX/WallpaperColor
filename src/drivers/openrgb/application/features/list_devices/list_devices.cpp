@@ -15,7 +15,11 @@ std::vector<Device> list_devices(OpenRgbServer& server, ServerState& state) {
         throw Error(cat("cannot reach the OpenRGB server at ", state.settings.address, ": ", e.what()));
     }
     std::vector<Device> out;
-    for (const Controller& c : state.controllers) out.push_back(Device{cat(c.index, " ", c.name), c.name, classify(c), c.colors});
+    state.zone_counts.clear();
+    for (const Controller& c : state.controllers) {
+        out.push_back(Device{cat(c.index, " ", c.name), c.name, classify(c), c.colors});
+        state.zone_counts.push_back(out.back().zones.size());
+    }
     return out;
 }
 

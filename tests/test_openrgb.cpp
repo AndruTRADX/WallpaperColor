@@ -257,6 +257,41 @@ TEST_CASE("the driver sends the whole device at once, or only the chosen zones")
     }
 }
 
+TEST_CASE("a frame whose zones follow each other in one buffer is sent as the same bytes") {
+    FakeServer server(devices(), 4);
+    std::vector<Rgb> frame(61);
+    for (size_t i = 0; i < frame.size(); ++i) frame[i] = Rgb{static_cast<uint8_t>(i), static_cast<uint8_t>(2 * i), 7};
+    std::span<const Rgb> all(frame);
+    {
+        std::unique_ptr<wpc::Driver> driver = create(DriverSettings("openrgb", {{"address", server.address()}}));
+        REQUIRE(driver->devices().size() == 2);
+        // As the service sends it: every zone a span over one frame.
+        std::vector<ZoneFrame> zones = {{0, all.subspan(0, 29)}, {1, all.subspan(29, 8)}, {2, all.subspan(37, 24)}};
+        driver->show(1, zones);
+        // The same colours from three separate buffers.
+        std::vector<Rgb> aio(frame.begin(), frame.begin() + 29);
+        std::vector<Rgb> fan1(frame.begin() + 29, frame.begin() + 37);
+        std::vector<Rgb> fan2(frame.begin() + 37, frame.end());
+        std::vector<ZoneFrame> apart = {{0, aio}, {1, fan1}, {2, fan2}};
+        driver->show(1, apart);
+    }
+    std::vector<Received> sent;
+    for (const Received& r : server.received()) {
+        if (r.id == packet::UPDATE_LEDS || r.id == packet::UPDATE_ZONE_LEDS) sent.push_back(r);
+    }
+    REQUIRE(sent.size() == 2);
+    CHECK(sent[0].id == packet::UPDATE_LEDS);
+    CHECK(sent[0].device == 1);
+    CHECK(sent[0].payload == sent[1].payload);
+    REQUIRE(sent[0].payload.size() == 6 + 61 * 4);
+    for (size_t i = 0; i < frame.size(); ++i) {
+        CHECK(sent[0].payload[6 + i * 4] == frame[i].r);
+        CHECK(sent[0].payload[7 + i * 4] == frame[i].g);
+        CHECK(sent[0].payload[8 + i * 4] == frame[i].b);
+        CHECK(sent[0].payload[9 + i * 4] == 0);
+    }
+}
+
 TEST_CASE("driver settings") {
     DriverSettings table("openrgb", {{"address", std::string("10.0.0.2:6742")}, {"adress", std::string("x")}});
     CHECK(read_settings(table).address == "10.0.0.2:6742");
