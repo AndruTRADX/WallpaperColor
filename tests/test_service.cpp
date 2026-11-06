@@ -166,6 +166,27 @@ TEST_CASE("a problem painting is shown and tried again, without reading the pict
     CHECK(s.pictures.reads == 1);
 }
 
+TEST_CASE("while the desktop has no screen, the slideshow stays followed and it is asked again") {
+    Setup s;
+    s.desktop.on = WallpaperSettings{"org.kde.slideshow", fs::path("/pictures/red.png"), {fs::path("/pictures")}};
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    REQUIRE(s.drivers.shown.size() == 1);
+
+    s.desktop.on = WallpaperSettings{};  // the monitor went off: Plasma answers with no plugin
+    service.check_wallpaper(false);
+    CHECK(service.state().slide_folders == std::vector<fs::path>{"/pictures"});
+    REQUIRE(service.state().retry);
+    CHECK(report_status(service.state()).image == fs::path("/pictures/red.png"));
+
+    s.desktop.on = WallpaperSettings{"org.kde.slideshow", fs::path("/pictures/blue.png"), {fs::path("/pictures")}};
+    service.check_wallpaper(false);  // the retry: the screen is back with another slide
+    CHECK(s.drivers.shown.size() == 2);
+    CHECK_FALSE(service.state().retry);
+    CHECK_FALSE(report_status(service.state()).error);
+    CHECK(report_status(service.state()).image == fs::path("/pictures/blue.png"));
+}
+
 TEST_CASE("a driver is loaded only while one of its components is chosen") {
     Setup s;
     ServiceLoop service = s.loop();

@@ -79,6 +79,11 @@ void paint_wallpaper(ServiceState& state, DesktopWallpaper& desktop, WallpaperPa
     } catch (const Error& e) {
         return schedule_retry(state, clock, std::string("cannot ask the desktop for the wallpaper: ") + e.what());
     }
+    if (on.plugin.empty()) {
+        // No desktop for now (the monitor went off and Plasma has no screen): no signal says when
+        // it is back, so ask again. The slideshow folders stay watched.
+        return schedule_retry(state, clock, "the desktop has no screen for now");
+    }
     state.shown.plugin = on.plugin;
     state.slide_folders = on.slide_folders;
     std::optional<fs::path> found = on.image ? packages.picture(*on.image, scheme.is_dark()) : std::nullopt;
