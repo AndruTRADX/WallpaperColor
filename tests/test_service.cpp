@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include "daemon/application/events/settings_changed.hpp"
 #include "daemon/application/features/exchange_messages/exchange_messages.hpp"
 #include "daemon/application/features/report_status/report_status.hpp"
 #include "daemon/presentation/requests/requests.hpp"
@@ -45,8 +46,11 @@ struct FakeSettings final : SettingsSource {
 /// Every picture is plain red.
 struct FakePictures final : Pictures {
     int reads = 0;
-    Picture read(const fs::path&, uint32_t) override {
+    std::function<void(const fs::path&)> opened;  // a file watch would see the picture opened
+
+    Picture read(const fs::path& path, uint32_t) override {
         ++reads;
+        if (opened) opened(path);
         Picture p{8, 8, {}, {}};
         for (int i = 0; i < 64; ++i) p.rgb8.insert(p.rgb8.end(), {220, 20, 20});
         return p;
@@ -105,8 +109,11 @@ struct FakeFiles final : FileWatch {
         watches.push_back(Watch{next_id, folder, std::move(changed)});
         return next_id++;
     }
+    std::vector<fs::path> missing;  // watching these fails, as a folder that doesn't exist
+
     int watch_tree(const fs::path& folder, uint32_t, std::function<void(const FileChange&)> changed) override {
         ++trees_scanned;
+        if (std::find(missing.begin(), missing.end(), folder) != missing.end()) throw Error("No such file or directory");
         watches.push_back(Watch{next_id, folder, std::move(changed)});
         return next_id++;
     }
@@ -128,6 +135,7 @@ struct FakeCodec final : MessageCodec {
     ipc::Request decode_request(std::string_view line) override {
         if (line == "status") return ipc::Request::Status;
         if (line == "pause") return ipc::Request::Pause;
+        if (line == "resume") return ipc::Request::Resume;
         throw Error("unknown command");
     }
     std::string encode(const ipc::Response& r) override {
@@ -264,14 +272,13 @@ TEST_CASE("R1: a slide opened by the desktop is painted without any other signal
     service.check_wallpaper(false);
 
     s.desktop.on = slideshow("/pictures/blue.png");
-    s.files.happen(FileChange{"/pictures", "blue.png", true, false, false});
+    s.files.happen(FileChange{.folder = "/pictures", .name = "blue.png", .opened = true});
     CHECK(settle(service) == 1);
     CHECK(report_status(service.state()).image == fs::path("/pictures/blue.png"));
     CHECK(s.drivers.shown.size() == 2);
 }
 
-// Known bug B2: paused, the retry is neither run nor moved on, so the loop spins.
-TEST_CASE("R2: paused with a retry pending, the loop goes quiet" * doctest::should_fail()) {
+TEST_CASE("R2: paused with a retry pending, the loop goes quiet") {
     Setup s;
     s.drivers.unplugged = true;
     ServiceLoop service = s.loop();
@@ -285,6 +292,14 @@ TEST_CASE("R2: paused with a retry pending, the loop goes quiet" * doctest::shou
     s.wait(std::chrono::seconds(10));
     CHECK(settle(service) <= 1);  // at most the retry, once
     CHECK_FALSE(retry_overdue(service, s.clock));
+
+    // Resumed: painted at once.
+    s.drivers.unplugged = false;
+    size_t shown = s.drivers.shown.size();
+    s.request("resume");
+    CHECK(settle(service) == 1);
+    CHECK(s.drivers.shown.size() > shown);
+    CHECK_FALSE(report_status(service.state()).error);
 }
 
 TEST_CASE("R2: a retry that fails again is moved on, further each time") {
@@ -302,18 +317,95 @@ TEST_CASE("R2: a retry that fails again is moved on, further each time") {
     CHECK(service.state().retry->delay > first);
 }
 
-// Known bug B3: follow() only looks at the slideshow's top folders, which did not change.
-TEST_CASE("R3: a folder created inside the slideshow is watched too" * doctest::should_fail()) {
+TEST_CASE("R3: a folder created inside the slideshow is watched too") {
     Setup s;
     s.desktop.on = slideshow("/pictures/red.png");
     ServiceLoop service = s.loop();
     service.check_wallpaper(false);
     REQUIRE(s.files.trees_scanned == 1);
 
-    s.files.happen(FileChange{"/pictures", "new", false, true, true});
+    s.files.happen(FileChange{.folder = "/pictures", .name = "new", .created = true, .is_folder = true});
     settle(service);
     CHECK(s.files.trees_scanned == 2);  // the tree read again, the new folder in it
     CHECK(s.files.watching("/pictures"));
+}
+
+TEST_CASE("R3: the slideshow folder removed is watched again once it is back") {
+    Setup s;
+    s.desktop.on = slideshow("/pictures/red.png");
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+
+    // Removed (or renamed away): its watch ends, and it cannot be watched again yet.
+    s.files.missing = {"/pictures"};
+    s.files.happen(FileChange{.folder = "/pictures", .name = "", .removed = true, .is_folder = true});
+    CHECK(settle(service) == 1);
+    REQUIRE(service.state().retry);
+    CHECK(report_status(service.state()).error == "not watching /pictures: No such file or directory");
+
+    s.wait(std::chrono::seconds(2));
+    CHECK(settle(service) == 1);  // still missing: tried again, later
+    CHECK_FALSE(retry_overdue(service, s.clock));
+
+    // Back: watched again, and the retry is over.
+    s.files.missing.clear();
+    s.wait(std::chrono::seconds(60));
+    CHECK(settle(service) == 1);
+    CHECK(s.files.watching("/pictures"));
+    CHECK_FALSE(service.state().retry);
+    CHECK_FALSE(report_status(service.state()).error);
+}
+
+TEST_CASE("R3: watching the folders again keeps no old watch, and misses nothing in between") {
+    Setup s;
+    s.desktop.on = slideshow("/pictures/red.png");
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    s.files.happen(FileChange{.folder = "/pictures", .name = "a", .created = true, .is_folder = true});
+    s.files.happen(FileChange{.folder = "/pictures", .name = "b", .created = true, .is_folder = true});
+    settle(service);
+    CHECK(s.files.trees_scanned == 2);  // one burst, read once
+    CHECK(s.files.watches.size() == 1);
+}
+
+TEST_CASE("R5: changes lost by the kernel read the folders again and check the wallpaper") {
+    Setup s;
+    s.desktop.on = slideshow("/pictures/red.png");
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+
+    s.desktop.on = slideshow("/pictures/blue.png");
+    s.files.happen(FileChange{.folder = "/pictures", .name = "", .is_folder = true, .overflow = true});
+    CHECK(settle(service) == 1);
+    CHECK(s.files.trees_scanned == 2);
+    CHECK(report_status(service.state()).image == fs::path("/pictures/blue.png"));
+}
+
+TEST_CASE("R5: changes lost by the kernel reload the settings") {
+    Setup s;
+    SettingsChangedEvent settings_changed(s.settings, s.files, [&](Notification n) { s.notifications.send(std::move(n)); });
+    settings_changed.start();
+    ServiceLoop service = s.loop();
+    s.settings.config.led.mode = Mode::Single;
+    s.files.happen(FileChange{.folder = "/fake", .name = "", .is_folder = true, .overflow = true});
+    CHECK(settle(service) == 1);
+    CHECK(service.state().config.led.mode == Mode::Single);
+}
+
+TEST_CASE("the service reading the new slide is not taken for another change") {
+    Setup s;
+    s.desktop.on = slideshow("/pictures/red.png");
+    s.pictures.opened = [&](const fs::path& p) {
+        s.files.happen(FileChange{.folder = p.parent_path(), .name = p.filename().string(), .opened = true});
+    };
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    CHECK_FALSE(service.step(std::chrono::milliseconds(0)));
+
+    s.desktop.on = slideshow("/pictures/blue.png");
+    s.files.happen(FileChange{.folder = "/pictures", .name = "blue.png", .opened = true});  // Plasma opens it
+    CHECK(settle(service) == 1);  // and the service's own read of it wakes nothing
+    CHECK(s.pictures.reads == 2);
 }
 
 TEST_CASE("the loop does nothing, and does not wait, when nothing happened") {

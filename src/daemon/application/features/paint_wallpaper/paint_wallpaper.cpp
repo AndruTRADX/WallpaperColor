@@ -72,7 +72,8 @@ void fade(DriversState& d, DriverModules& drivers, Clock& clock, const std::vect
 }  // namespace
 
 void paint_wallpaper(ServiceState& state, DesktopWallpaper& desktop, WallpaperPackages& packages, ColourScheme& scheme,
-                     Pictures& pictures, DriverModules& drivers, Clock& clock, Memory& memory, bool force) {
+                     Pictures& pictures, DriverModules& drivers, Clock& clock, Memory& memory, bool force,
+                     const std::function<void(const fs::path&)>& showing) {
     WallpaperSettings on;
     try {
         on = desktop.current();
@@ -94,6 +95,7 @@ void paint_wallpaper(ServiceState& state, DesktopWallpaper& desktop, WallpaperPa
 
     const fs::path& picture = *found;
     state.shown.image = picture;
+    if (showing) showing(picture);
     std::string key = key_of(picture, pictures.modified_time(picture), state.config);
     if (!force && !state.retry && state.last_painted == key) return;
 
@@ -114,6 +116,7 @@ void paint_wallpaper(ServiceState& state, DesktopWallpaper& desktop, WallpaperPa
     for (Rgb c : state.extracted_stops) state.shown.stops.push_back(c.hex());
     if (state.paused) {
         state.last_painted.reset();  // paint on resume
+        state.retry.reset();         // nothing to try again until then (a due retry would spin)
         return;
     }
 

@@ -1,6 +1,7 @@
 #include "daemon/infrastructure/services/file_watch.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -18,9 +19,24 @@ uint32_t inotify_mask(uint32_t what) {
     uint32_t mask = 0;
     if (what & FILE_OPENED) mask |= IN_OPEN;
     if (what & FILE_WRITTEN) mask |= IN_CLOSE_WRITE | IN_MOVED_TO;
-    if (what & FILE_CREATED) mask |= IN_CREATE;
+    if (what & FILE_CREATED) mask |= IN_CREATE | IN_MOVED_TO;
+    if (what & FILE_REMOVED) mask |= IN_DELETE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF;
     return mask;
 }
+
+/// The change an inotify event in `folder` is.
+FileChange change_of(const FileEvent& e, const std::filesystem::path& folder) {
+    bool self = (e.mask & (IN_DELETE_SELF | IN_MOVE_SELF)) != 0;
+    return FileChange{.folder = folder,
+                      .name = self ? "" : e.name,
+                      .opened = (e.mask & IN_OPEN) != 0,
+                      .created = (e.mask & (IN_CREATE | IN_MOVED_TO)) != 0,
+                      .removed = (e.mask & (IN_DELETE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF)) != 0,
+                      .is_folder = self || (e.mask & IN_ISDIR) != 0,
+                      .overflow = false};
+}
+
+using Delivery = std::pair<std::function<void(const FileChange&)>, FileChange>;
 
 }  // namespace
 
@@ -39,6 +55,24 @@ struct InotifyFileWatch::State {
     int next_id = 1;
     bool stopped = false;
 
+    /// Who hears `e`, with what. Also forgets the watches the kernel has ended.
+    void deliveries(const FileEvent& e, std::vector<Delivery>& out) {
+        if (e.mask & IN_Q_OVERFLOW) {
+            // Lost events, of any folder: every watch hears that anything may have changed.
+            for (const Watch& w : watches) {
+                out.emplace_back(w.changed, FileChange{.folder = w.path, .name = "", .opened = false, .created = false,
+                                                                   .removed = false, .is_folder = true, .overflow = true});
+            }
+            return;
+        }
+        for (const Watch& w : watches) {
+            if (w.folder == e.watch && (w.mask & e.mask)) out.emplace_back(w.changed, change_of(e, w.path));
+        }
+        // The folder is gone (or its watch was removed): the kernel may give its number to
+        // another folder, so it must not stay here.
+        if (e.mask & IN_IGNORED) std::erase_if(watches, [&](const Watch& w) { return w.folder == e.watch; });
+    }
+
     uint32_t mask_of(int folder) const {
         uint32_t mask = 0;
         for (const Watch& w : watches) {
@@ -50,27 +84,27 @@ struct InotifyFileWatch::State {
 
 InotifyFileWatch::InotifyFileWatch() : state_(std::make_shared<State>()) {
     std::thread([state = state_] {
+        bool failing = false;
         while (true) {
             std::vector<FileEvent> events;
             try {
                 events = state->inotify.read_events();
+                failing = false;
             } catch (const Error& e) {
-                log("file watch: {}", e.what());
-                return;
+                // Not expected; going on beats going deaf for good. Said once, tried every second.
+                if (!failing) log("file watch: {} (trying again every second)", e.what());
+                failing = true;
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                continue;
             }
             for (const FileEvent& e : events) {
-                std::vector<std::pair<std::function<void(const FileChange&)>, std::filesystem::path>> callbacks;
+                std::vector<Delivery> deliveries;
                 {
                     std::lock_guard lock(state->mutex);
                     if (state->stopped) return;
-                    for (const State::Watch& w : state->watches) {
-                        if (w.folder == e.watch && (w.mask & e.mask)) callbacks.emplace_back(w.changed, w.path);
-                    }
+                    state->deliveries(e, deliveries);
                 }
-                for (const auto& [callback, path] : callbacks) {
-                    callback(FileChange{path, e.name, (e.mask & IN_OPEN) != 0, (e.mask & IN_CREATE) != 0,
-                                        (e.mask & IN_ISDIR) != 0});
-                }
+                for (const auto& [callback, change] : deliveries) callback(change);
             }
         }
     }).detach();

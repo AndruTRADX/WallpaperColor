@@ -29,6 +29,7 @@ add_executable(wpc_tests
   test_kde.cpp
   test_settings.cpp
   test_service.cpp
+  test_file_watch.cpp
   test_daemon_domain.cpp
   test_driver_modules.cpp
   test_terminal.cpp

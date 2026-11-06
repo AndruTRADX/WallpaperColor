@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,8 +24,10 @@
 
 namespace wpc {
 
+/// `showing` hears which picture is on screen before it is read.
 void paint_wallpaper(ServiceState& state, DesktopWallpaper& desktop, WallpaperPackages& packages, ColourScheme& scheme,
-                     Pictures& pictures, DriverModules& drivers, Clock& clock, Memory& memory, bool force);
+                     Pictures& pictures, DriverModules& drivers, Clock& clock, Memory& memory, bool force,
+                     const std::function<void(const std::filesystem::path&)>& showing = {});
 
 /// Paints `stops` in `mode` on the loaded drivers' chosen zones, with the settings in `state`,
 /// fading from what they show; records the outcome in state.shown (devices, last problem,

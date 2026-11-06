@@ -52,8 +52,12 @@ void ServiceLoop::settings_changed() {
 void ServiceLoop::check_wallpaper(bool force) {
     if (state_.testing) return paint_white(state_, parts_.drivers, parts_.clock);
     ServiceParts& p = parts_;
-    paint_wallpaper(state_, p.desktop, p.packages, p.scheme, p.pictures, p.drivers, p.clock, p.memory, force);
-    desktop_changed_.follow(state_.slide_folders, state_.shown.image);
+    paint_wallpaper(state_, p.desktop, p.packages, p.scheme, p.pictures, p.drivers, p.clock, p.memory, force,
+                    [this](const std::filesystem::path& picture) { desktop_changed_.showing(picture); });
+    // A folder that cannot be watched now (removed, for a while): try again later (R1, R3).
+    if (std::optional<std::string> problem = desktop_changed_.follow(state_.slide_folders)) {
+        schedule_retry(state_, p.clock, *problem);
+    }
 }
 
 void ServiceLoop::take(Notification notification, Todo& todo) {

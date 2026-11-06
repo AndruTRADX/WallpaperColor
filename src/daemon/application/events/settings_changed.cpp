@@ -22,7 +22,7 @@ void SettingsChangedEvent::watch_folder() {
     if (watching_folder_) return;
     std::filesystem::path file = settings_.location();
     files_.watch(file.parent_path(), FILE_WRITTEN | FILE_CREATED, [this, name = file.filename().string()](const FileChange& c) {
-        if (c.name == name) notify_(SettingsChangedNotice{});
+        if (c.name == name || c.overflow) notify_(SettingsChangedNotice{});
     });
     watching_folder_ = true;
 }

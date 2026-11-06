@@ -5,12 +5,18 @@
 //   plasmashell opens the next picture. Opening the picture on screen is ignored: it is the
 //   service reading it, and noticing it would trigger another read.
 // Only a hint: the picture always comes from the desktop when the feature runs.
+//
+// The slideshow folders are watched with every folder below them. A folder created or removed
+// in there, the folder itself removed, or changes lost, read the folders again at the next
+// follow().
 
 #pragma once
 
+#include <atomic>
 #include <filesystem>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "daemon/application/contracts/desktop_signals.hpp"
@@ -27,10 +33,13 @@ public:
     /// Starts listening to the desktop's signals and settings files.
     void start();
 
-    /// Listens to the slideshow folders of the wallpaper now on screen (none: stops), and
-    /// remembers which picture is on screen.
-    void follow(const std::vector<std::filesystem::path>& slide_folders,
-                const std::optional<std::filesystem::path>& on_screen);
+    /// The picture on screen, about to be read: its opening is not a change.
+    void showing(const std::optional<std::filesystem::path>& picture);
+
+    /// Listens to the slideshow folders of the wallpaper now on screen (none: stops). Reads
+    /// the folders again when they or what is in them changed. Returns what could not be
+    /// watched (try again later), or nullopt.
+    std::optional<std::string> follow(const std::vector<std::filesystem::path>& slide_folders);
 
 private:
     void slide_changed(const FileChange& change);
@@ -40,6 +49,10 @@ private:
     Notify notify_;
     std::vector<std::filesystem::path> slide_folders_;
     std::vector<int> slide_watches_;
+    /// Every folder of slide_folders_ is watched.
+    bool following_all_ = true;
+    /// The folders changed: read them again (set on the file watch's thread).
+    std::atomic<bool> reread_{false};
     std::mutex mutex_;  // on_screen_ is read on the file watch's thread
     std::optional<std::filesystem::path> on_screen_;
 };
