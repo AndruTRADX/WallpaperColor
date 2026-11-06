@@ -8,6 +8,11 @@
 
 namespace wpc {
 
+namespace {
+/// A request is one short line; anything longer is not one.
+constexpr size_t MAX_REQUEST = 64u << 10;
+}  // namespace
+
 void UnixRequestSocket::serve(std::function<std::string(const std::string& request)> answer) {
     std::error_code ignored;
     std::filesystem::remove(path_, ignored);  // stale socket of a previous run
@@ -24,7 +29,7 @@ void UnixRequestSocket::serve(std::function<std::string(const std::string& reque
             std::string line;
             try {
                 set_timeouts(client, Seconds(2), Seconds(0));
-                line = read_line(client);
+                line = read_line(client, MAX_REQUEST);
             } catch (const Error&) {
                 continue;  // nothing readable: drop the connection
             }

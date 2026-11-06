@@ -55,7 +55,8 @@ void write_all(const Fd& fd, std::string_view text);
 /// Fills `buffer` completely, or throws (also when the other side closes first).
 void read_exact(const Fd& fd, std::span<uint8_t> buffer);
 
-/// Reads up to and including the next '\n' (or to the end of the stream).
-std::string read_line(const Fd& fd);
+/// Reads up to and including the next '\n' (or to the end of the stream). A line longer than
+/// `max` bytes is an error: whoever sends it can't make it grow without end.
+std::string read_line(const Fd& fd, size_t max = 16u << 20);
 
 }  // namespace wpc

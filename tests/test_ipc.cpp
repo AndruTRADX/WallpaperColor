@@ -1,7 +1,12 @@
 #include <doctest/doctest.h>
 
+#include <string>
+
+#include <sys/socket.h>
+
 #include "shared/infrastructure/services/protocol_json.hpp"
 #include "utils/error.hpp"
+#include "utils/socket.hpp"
 
 using namespace wpc;
 using namespace wpc::ipc;
@@ -62,4 +67,30 @@ TEST_CASE("invalid utf-8 cannot be sent") {
     Status s;
     s.image = std::string("/bad/\xff.png");
     CHECK_THROWS(ProtocolJson().encode(Response::of(s)));
+}
+
+namespace {
+/// Two connected ends of a local socket.
+std::pair<Fd, Fd> socket_pair() {
+    int ends[2];
+    REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, ends) == 0);
+    return {Fd(ends[0]), Fd(ends[1])};
+}
+}  // namespace
+
+TEST_CASE("a line is read up to its end, also when it takes several reads") {
+    auto [reader, writer] = socket_pair();
+    std::string line = std::string(10000, 'a') + "\n";
+    write_all(writer, line);
+    CHECK(read_line(reader) == line);
+
+    write_all(writer, std::string("short"));
+    writer = Fd(-1);  // closed: the stream ends without a '\n'
+    CHECK(read_line(reader) == "short");
+}
+
+TEST_CASE("a line too long is an error, not memory without end") {
+    auto [reader, writer] = socket_pair();
+    write_all(writer, std::string(70000, 'b'));  // no end in sight
+    CHECK_THROWS_WITH(read_line(reader, 65536), "line longer than 65536 bytes");
 }

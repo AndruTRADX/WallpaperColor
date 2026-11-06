@@ -166,20 +166,24 @@ void read_exact(const Fd& fd, std::span<uint8_t> buffer) {
     }
 }
 
-std::string read_line(const Fd& fd) {
+std::string read_line(const Fd& fd, size_t max) {
     std::string line;
     char buffer[4096];
-    while (line.find('\n') == std::string::npos) {
+    while (true) {
         ssize_t n = ::recv(fd.get(), buffer, sizeof buffer, 0);
         if (n < 0) {
             if (errno == EINTR) continue;
             fail_errno();
         }
-        if (n == 0) break;  // end of stream
-        line.append(buffer, static_cast<size_t>(n));
+        if (n == 0) return line;  // end of stream
+        // Only the new bytes are searched: each byte is looked at once.
+        std::string_view chunk(buffer, static_cast<size_t>(n));
+        size_t end = chunk.find('\n');
+        size_t take = end == std::string_view::npos ? chunk.size() : end + 1;
+        if (line.size() + take > max) throw Error(cat("line longer than ", max, " bytes"));
+        line.append(chunk.substr(0, take));
+        if (end != std::string_view::npos) return line;
     }
-    if (size_t end = line.find('\n'); end != std::string::npos) line.resize(end + 1);
-    return line;
 }
 
 }  // namespace wpc
