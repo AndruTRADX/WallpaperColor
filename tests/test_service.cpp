@@ -2,6 +2,8 @@
 // the pictures, the drivers, the clock. This is what talking through contracts makes possible:
 // no hardware, no files, no D-Bus.
 
+#include <algorithm>
+
 #include <doctest/doctest.h>
 
 #include "daemon/application/features/exchange_messages/exchange_messages.hpp"
@@ -88,10 +90,37 @@ struct FakeMemory final : Memory {
     void release() override { ++releases; }
 };
 
+/// Remembers the watches, so a test can see what is watched and make a change happen.
 struct FakeFiles final : FileWatch {
-    int watch(const fs::path&, uint32_t, std::function<void(const FileChange&)>) override { return 1; }
-    int watch_tree(const fs::path&, uint32_t, std::function<void(const FileChange&)>) override { return 1; }
-    void unwatch(int) override {}
+    struct Watch {
+        int id;
+        fs::path folder;
+        std::function<void(const FileChange&)> changed;
+    };
+    std::vector<Watch> watches;
+    int trees_scanned = 0;  // watch_tree() calls: the real one reads the folder tree then
+    int next_id = 1;
+
+    int watch(const fs::path& folder, uint32_t, std::function<void(const FileChange&)> changed) override {
+        watches.push_back(Watch{next_id, folder, std::move(changed)});
+        return next_id++;
+    }
+    int watch_tree(const fs::path& folder, uint32_t, std::function<void(const FileChange&)> changed) override {
+        ++trees_scanned;
+        watches.push_back(Watch{next_id, folder, std::move(changed)});
+        return next_id++;
+    }
+    void unwatch(int id) override { std::erase_if(watches, [&](const Watch& w) { return w.id == id; }); }
+
+    bool watching(const fs::path& folder) const {
+        return std::any_of(watches.begin(), watches.end(), [&](const Watch& w) { return w.folder == folder; });
+    }
+    /// A change in `folder`, as inotify would report it.
+    void happen(const FileChange& change) {
+        for (const Watch& w : std::vector<Watch>(watches)) {
+            if (w.folder == change.folder) w.changed(change);
+        }
+    }
 };
 
 /// Lines are the requests' names.
@@ -118,13 +147,39 @@ struct Setup {
     FakeMemory memory;
     FakeFiles files;
     Notifications notifications;
-    DesktopChangedEvent desktop_changed{desktop, files, [](Notification) {}};
+    DesktopChangedEvent desktop_changed{desktop, files, [this](Notification n) { notifications.send(std::move(n)); }};
 
+    /// No settle time: a burst is over as soon as nothing is waiting.
     ServiceLoop loop() {
         return ServiceLoop(ServiceParts{desktop, packages, scheme, pictures, settings, drivers, codec, clock, memory},
-                           notifications, desktop_changed);
+                           notifications, desktop_changed, std::chrono::milliseconds(0));
     }
+
+    /// A request from the terminal, as the socket hands it to the loop.
+    void request(const std::string& line) {
+        notifications.send(RequestNotice{line, std::make_shared<Channel<std::string>>()});
+    }
+
+    /// Time passes (only on the service's clock).
+    void wait(std::chrono::seconds s) { clock.at += s; }
 };
+
+/// R2: a pending retry is never left due; a due one would make the loop spin.
+bool retry_overdue(const ServiceLoop& service, FakeClock& clock) {
+    return service.state().retry && service.state().retry->at <= clock.now();
+}
+
+/// Runs the loop until it has nothing to do, without waiting; how many turns did something.
+/// A loop that never runs out of work is a spinning service: it stops at `most` and says so.
+int settle(ServiceLoop& service, int most = 20) {
+    int turns = 0;
+    while (turns < most && service.step(std::chrono::milliseconds(0))) ++turns;
+    return turns;
+}
+
+WallpaperSettings slideshow(const char* slide) {
+    return WallpaperSettings{"org.kde.slideshow", fs::path(slide), {fs::path("/pictures")}};
+}
 
 }  // namespace
 
@@ -166,25 +221,109 @@ TEST_CASE("a problem painting is shown and tried again, without reading the pict
     CHECK(s.pictures.reads == 1);
 }
 
-TEST_CASE("while the desktop has no screen, the slideshow stays followed and it is asked again") {
+// ---------------------------------------------------------------------------------------------
+// The loop over time: rules that keep the service from going deaf (see docs/ARCHITECTURE.md).
+// Each test drives ServiceLoop::step() with a fake clock, the way the events would.
+
+TEST_CASE("R1: while the desktop has no screen, the slideshow stays followed and it is asked again") {
     Setup s;
-    s.desktop.on = WallpaperSettings{"org.kde.slideshow", fs::path("/pictures/red.png"), {fs::path("/pictures")}};
+    s.desktop.on = slideshow("/pictures/red.png");
     ServiceLoop service = s.loop();
     service.check_wallpaper(false);
     REQUIRE(s.drivers.shown.size() == 1);
+    REQUIRE(s.files.watching("/pictures"));
 
-    s.desktop.on = WallpaperSettings{};  // the monitor went off: Plasma answers with no plugin
-    service.check_wallpaper(false);
-    CHECK(service.state().slide_folders == std::vector<fs::path>{"/pictures"});
+    // The monitor goes off: Plasma has no screen and answers with no plugin.
+    s.desktop.on = WallpaperSettings{};
+    s.notifications.send(DesktopChangedNotice{});
+    CHECK(settle(service) == 1);
+    CHECK(s.files.watching("/pictures"));
     REQUIRE(service.state().retry);
     CHECK(report_status(service.state()).image == fs::path("/pictures/red.png"));
 
-    s.desktop.on = WallpaperSettings{"org.kde.slideshow", fs::path("/pictures/blue.png"), {fs::path("/pictures")}};
-    service.check_wallpaper(false);  // the retry: the screen is back with another slide
+    // Still off a while later: asked again, nothing painted, never overdue.
+    s.wait(std::chrono::seconds(2));
+    CHECK(settle(service) == 1);
+    CHECK_FALSE(retry_overdue(service, s.clock));
+    CHECK(s.drivers.shown.size() == 1);
+
+    // Back, on another slide, and no signal says so: the retry finds it.
+    s.desktop.on = slideshow("/pictures/blue.png");
+    s.wait(std::chrono::seconds(60));
+    CHECK(settle(service) == 1);
     CHECK(s.drivers.shown.size() == 2);
     CHECK_FALSE(service.state().retry);
     CHECK_FALSE(report_status(service.state()).error);
     CHECK(report_status(service.state()).image == fs::path("/pictures/blue.png"));
+}
+
+TEST_CASE("R1: a slide opened by the desktop is painted without any other signal") {
+    Setup s;
+    s.desktop.on = slideshow("/pictures/red.png");
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+
+    s.desktop.on = slideshow("/pictures/blue.png");
+    s.files.happen(FileChange{"/pictures", "blue.png", true, false, false});
+    CHECK(settle(service) == 1);
+    CHECK(report_status(service.state()).image == fs::path("/pictures/blue.png"));
+    CHECK(s.drivers.shown.size() == 2);
+}
+
+// Known bug B2: paused, the retry is neither run nor moved on, so the loop spins.
+TEST_CASE("R2: paused with a retry pending, the loop goes quiet" * doctest::should_fail()) {
+    Setup s;
+    s.drivers.unplugged = true;
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    REQUIRE(service.state().retry);
+
+    s.request("pause");
+    CHECK(settle(service) == 1);
+    REQUIRE(service.state().paused);
+
+    s.wait(std::chrono::seconds(10));
+    CHECK(settle(service) <= 1);  // at most the retry, once
+    CHECK_FALSE(retry_overdue(service, s.clock));
+}
+
+TEST_CASE("R2: a retry that fails again is moved on, further each time") {
+    Setup s;
+    s.drivers.unplugged = true;
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    REQUIRE(service.state().retry);
+    RetryDelay first = service.state().retry->delay;
+
+    s.wait(std::chrono::seconds(2));
+    CHECK(settle(service) == 1);
+    CHECK_FALSE(retry_overdue(service, s.clock));
+    REQUIRE(service.state().retry);
+    CHECK(service.state().retry->delay > first);
+}
+
+// Known bug B3: follow() only looks at the slideshow's top folders, which did not change.
+TEST_CASE("R3: a folder created inside the slideshow is watched too" * doctest::should_fail()) {
+    Setup s;
+    s.desktop.on = slideshow("/pictures/red.png");
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    REQUIRE(s.files.trees_scanned == 1);
+
+    s.files.happen(FileChange{"/pictures", "new", false, true, true});
+    settle(service);
+    CHECK(s.files.trees_scanned == 2);  // the tree read again, the new folder in it
+    CHECK(s.files.watching("/pictures"));
+}
+
+TEST_CASE("the loop does nothing, and does not wait, when nothing happened") {
+    Setup s;
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    CHECK_FALSE(service.step(std::chrono::milliseconds(0)));
+    s.request("status");
+    CHECK(service.step(std::chrono::milliseconds(0)));  // answered
+    CHECK(s.drivers.shown.size() == 1);                   // and nothing painted for it
 }
 
 TEST_CASE("a driver is loaded only while one of its components is chosen") {

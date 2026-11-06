@@ -1,6 +1,6 @@
 #include "daemon/presentation/service_loop/service_loop.hpp"
 
-#include <chrono>
+#include <algorithm>
 
 #include "daemon/application/features/apply_settings/apply_settings.hpp"
 #include "daemon/application/features/exchange_messages/exchange_messages.hpp"
@@ -10,40 +10,39 @@
 
 namespace wpc {
 
-using namespace std::chrono_literals;
-
-namespace {
-/// Quiet time that ends a burst of notifications.
-constexpr auto SETTLE = 800ms;
-}  // namespace
-
-ServiceLoop::ServiceLoop(ServiceParts parts, Notifications& notifications, DesktopChangedEvent& desktop_changed)
-    : parts_(parts), notifications_(notifications), desktop_changed_(desktop_changed) {
+ServiceLoop::ServiceLoop(ServiceParts parts, Notifications& notifications, DesktopChangedEvent& desktop_changed,
+                         std::chrono::milliseconds settle)
+    : parts_(parts), notifications_(notifications), desktop_changed_(desktop_changed), settle_(settle) {
     apply_settings(state_, parts_.settings, parts_.drivers, parts_.memory, true);
 }
 
 void ServiceLoop::run() {
     check_wallpaper(false);
-    while (true) {
-        std::optional<Notification> notification;
-        if (std::optional<TimePoint::duration> wait = time_to_retry(state_, parts_.clock)) {
-            notification = notifications_.receive_for(*wait);
-        } else {
-            notification = notifications_.receive();
-        }
+    while (true) step();
+}
 
-        Todo todo;
-        todo.check = !notification.has_value();  // the retry is due
-        if (notification) take(std::move(*notification), todo);
-        if (!todo.check && !todo.reload && !todo.force) continue;
+bool ServiceLoop::step(std::optional<TimePoint::duration> limit) {
+    std::optional<TimePoint::duration> wait = time_to_retry(state_, parts_.clock);
+    if (limit) wait = wait ? std::min(*wait, *limit) : *limit;
+    std::optional<Notification> notification = wait ? notifications_.receive_for(*wait) : notifications_.receive();
 
-        // the rest of the burst (requests are still answered at once)
-        if (!todo.force) {
-            while (std::optional<Notification> more = notifications_.receive_for(SETTLE)) take(std::move(*more), todo);
-        }
-        if (todo.reload) settings_changed();
-        check_wallpaper(todo.reload || todo.force);
+    Todo todo;
+    if (notification) {
+        take(std::move(*notification), todo);
+    } else {
+        std::optional<TimePoint::duration> left = time_to_retry(state_, parts_.clock);
+        if (!left || *left > TimePoint::duration::zero()) return false;  // the limit, not the retry
+        todo.check = true;
     }
+    if (!todo.check && !todo.reload && !todo.force) return true;  // a request, answered
+
+    // the rest of the burst (requests are still answered at once)
+    if (!todo.force) {
+        while (std::optional<Notification> more = notifications_.receive_for(settle_)) take(std::move(*more), todo);
+    }
+    if (todo.reload) settings_changed();
+    check_wallpaper(todo.reload || todo.force);
+    return true;
 }
 
 void ServiceLoop::settings_changed() {

@@ -454,6 +454,24 @@ for `[led] fade` seconds (at most 1.5). If a driver or Plasma doesn't answer, th
 retries after 2 s, 4 s, 8 s … up to 60 s, and paints the other drivers meanwhile. While nothing
 happens, every thread sleeps in the kernel: 0 % CPU, about 2.5 MB of memory of its own.
 
+### Rules that keep the service from going deaf
+
+The service only wakes up for a notification or a due retry. A branch that leaves neither
+armed puts it to sleep for good: the lights stay on an old wallpaper until a manual `apply`.
+Every change to the loop, the events or the features keeps these, and `tests/test_service.cpp`
+checks them over time (the `R1`… tests drive `ServiceLoop::step()` with a fake clock):
+
+| Rule | What it means |
+| --- | --- |
+| R1 | While the service doesn't know what is on screen (Plasma unreachable, no screen), a retry or a signal is armed to wake it. |
+| R2 | A due retry is always run and either cleared or moved on; it never stays due (the loop would spin). |
+| R3 | The folder watches match the folders on disk: folders created or removed under a slideshow folder too. |
+| R4 | Hardware that comes back (plugged in again, after a suspend, OpenLinkHub restarted) is painted again without waiting for the next wallpaper. |
+| R5 | A thread that hears events doesn't stop silently: it starts again, or the service says so and checks everything. |
+
+A test marked `doctest::should_fail()` records a known break of a rule; it is unmarked with
+the fix.
+
 ### Drivers are modules
 
 The code that talks to hardware is in driver modules, one file each: `wpc-driver-openrgb.so`

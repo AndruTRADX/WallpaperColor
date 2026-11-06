@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include <chrono>
+#include <optional>
+
 #include "daemon/application/events/desktop_changed.hpp"
 #include "daemon/application/models/notifications.hpp"
 #include "daemon/application/models/service_parts.hpp"
@@ -14,11 +17,20 @@ namespace wpc {
 
 class ServiceLoop {
 public:
-    /// Applies the settings.
-    ServiceLoop(ServiceParts parts, Notifications& notifications, DesktopChangedEvent& desktop_changed);
+    /// Quiet time that ends a burst of notifications.
+    static constexpr std::chrono::milliseconds SETTLE{800};
+
+    /// Applies the settings. `settle`: how long a burst waits to be over (the tests use zero).
+    ServiceLoop(ServiceParts parts, Notifications& notifications, DesktopChangedEvent& desktop_changed,
+                std::chrono::milliseconds settle = SETTLE);
 
     /// Paints the wallpaper, then runs until the service stops.
     [[noreturn]] void run();
+
+    /// One turn of the loop: waits for a notification, or for the pending retry to be due, and
+    /// runs what it asks for. `limit` caps the wait (the tests pass zero, so it never blocks).
+    /// False when nothing came and no retry was due in that time.
+    bool step(std::optional<TimePoint::duration> limit = std::nullopt);
 
     /// What the loop does with one kind of notification (also for the tests).
     void settings_changed();
@@ -36,6 +48,7 @@ private:
     ServiceParts parts_;
     Notifications& notifications_;
     DesktopChangedEvent& desktop_changed_;
+    std::chrono::milliseconds settle_;
     ServiceState state_;
 };
 
