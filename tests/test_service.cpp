@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include "daemon/application/events/hardware_changed.hpp"
 #include "daemon/application/events/settings_changed.hpp"
 #include "daemon/application/features/exchange_messages/exchange_messages.hpp"
 #include "daemon/application/features/report_status/report_status.hpp"
@@ -128,6 +129,13 @@ struct FakeFiles final : FileWatch {
             if (w.folder == change.folder) w.changed(change);
         }
     }
+};
+
+/// The computer's signals, made to happen by the test.
+struct FakeSystem final : SystemSignals {
+    std::function<void()> woke;
+    void listen(std::function<void()> w) override { woke = std::move(w); }
+    fs::path device_folder() override { return "/dev"; }
 };
 
 /// Lines are the requests' names.
@@ -406,6 +414,55 @@ TEST_CASE("the service reading the new slide is not taken for another change") {
     s.files.happen(FileChange{.folder = "/pictures", .name = "blue.png", .opened = true});  // Plasma opens it
     CHECK(settle(service) == 1);  // and the service's own read of it wakes nothing
     CHECK(s.pictures.reads == 2);
+}
+
+TEST_CASE("R4: a device plugged in is painted again without a new wallpaper") {
+    Setup s;
+    FakeSystem system;
+    HardwareChangedEvent hardware(system, s.files, [&](Notification n) { s.notifications.send(std::move(n)); });
+    hardware.start();
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    REQUIRE(s.drivers.shown.size() == 1);
+
+    // A keyboard plugged in again: the kernel adds a few files at once.
+    for (const char* name : {"hidraw7", "hidraw8", "hidraw9"}) {
+        s.files.happen(FileChange{.folder = "/dev", .name = name, .created = true});
+    }
+    CHECK(settle(service) == 1);       // one burst, one repaint
+    CHECK(s.drivers.shown.size() == 2);
+    CHECK(s.pictures.reads == 1);      // the same colours, not read again
+}
+
+TEST_CASE("R4: waking from sleep paints again") {
+    Setup s;
+    FakeSystem system;
+    HardwareChangedEvent hardware(system, s.files, [&](Notification n) { s.notifications.send(std::move(n)); });
+    hardware.start();
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    REQUIRE(system.woke);
+
+    system.woke();
+    CHECK(settle(service) == 1);
+    CHECK(s.drivers.shown.size() == 2);
+    CHECK_FALSE(service.state().retry);
+}
+
+TEST_CASE("R4: paused, the hardware coming back paints nothing and the loop stays quiet") {
+    Setup s;
+    FakeSystem system;
+    HardwareChangedEvent hardware(system, s.files, [&](Notification n) { s.notifications.send(std::move(n)); });
+    hardware.start();
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    s.request("pause");
+    settle(service);
+
+    system.woke();
+    CHECK(settle(service) == 1);
+    CHECK(s.drivers.shown.size() == 1);
+    CHECK_FALSE(service.state().retry);
 }
 
 TEST_CASE("the loop does nothing, and does not wait, when nothing happened") {

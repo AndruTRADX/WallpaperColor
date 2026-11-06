@@ -128,6 +128,11 @@ void paint_wallpaper(ServiceState& state, DesktopWallpaper& desktop, WallpaperPa
     log("{} → {} device(s) from {}", joined, state.shown.devices.size(), picture.string());
 }
 
+void hardware_woke(ServiceState& state) {
+    state.drivers.shown.clear();
+    log("woke up: painting again");
+}
+
 void paint_colours(ServiceState& state, DriverModules& drivers, Clock& clock, const std::vector<Rgb>& stops, Mode mode) {
     const Config& c = state.config;
     DriversState& d = state.drivers;

@@ -9,6 +9,7 @@
 #include <string>
 
 #include "daemon/application/events/desktop_changed.hpp"
+#include "daemon/application/events/hardware_changed.hpp"
 #include "daemon/application/events/request_received.hpp"
 #include "daemon/application/events/settings_changed.hpp"
 #include "daemon/application/features/exchange_messages/exchange_messages.hpp"
@@ -19,6 +20,7 @@
 #include "daemon/infrastructure/services/clock.hpp"
 #include "daemon/infrastructure/services/colour_scheme.hpp"
 #include "daemon/infrastructure/services/file_watch.hpp"
+#include "daemon/infrastructure/services/logind.hpp"
 #include "daemon/infrastructure/services/memory.hpp"
 #include "daemon/infrastructure/services/plasma_shell.hpp"
 #include "daemon/infrastructure/services/request_socket.hpp"
@@ -52,12 +54,14 @@ int main(int argc, char** argv) {
         } catch (const Error& e) {
             throw Error(std::string("cannot reach the session bus: ") + e.what());
         }
+        Logind logind;
         UnixRequestSocket socket(SocketPath().path());
 
         Notifications notifications;
         Notify notify = [&notifications](Notification n) { notifications.send(std::move(n)); };
         DesktopChangedEvent desktop_changed(*plasma, files, notify);
         SettingsChangedEvent settings_changed(settings, files, notify);
+        HardwareChangedEvent hardware_changed(logind, files, notify);
         RequestReceivedEvent request_received(socket, notify, write_answer(codec, ipc::Response::error("service busy")));
 
         ServiceLoop loop(ServiceParts{*plasma, packages, scheme, pictures, settings, drivers, codec, clock, memory},
@@ -68,6 +72,11 @@ int main(int argc, char** argv) {
             settings_changed.start();
         } catch (const Error& e) {
             log("not watching {}: {}", path->string(), e.what());
+        }
+        try {
+            hardware_changed.start();
+        } catch (const Error& e) {
+            log("not hearing devices plugged in: {}", e.what());
         }
         loop.run();
     } catch (const Error& e) {

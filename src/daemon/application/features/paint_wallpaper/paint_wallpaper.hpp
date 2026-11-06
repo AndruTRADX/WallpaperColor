@@ -29,6 +29,10 @@ void paint_wallpaper(ServiceState& state, DesktopWallpaper& desktop, WallpaperPa
                      Pictures& pictures, DriverModules& drivers, Clock& clock, Memory& memory, bool force,
                      const std::function<void(const std::filesystem::path&)>& showing = {});
 
+/// The computer woke from sleep: what the devices show is not known, so the next fade starts
+/// from what they report.
+void hardware_woke(ServiceState& state);
+
 /// Paints `stops` in `mode` on the loaded drivers' chosen zones, with the settings in `state`,
 /// fading from what they show; records the outcome in state.shown (devices, last problem,
 /// time). A problem schedules a retry.

@@ -34,14 +34,15 @@ bool ServiceLoop::step(std::optional<TimePoint::duration> limit) {
         if (!left || *left > TimePoint::duration::zero()) return false;  // the limit, not the retry
         todo.check = true;
     }
-    if (!todo.check && !todo.reload && !todo.force) return true;  // a request, answered
+    if (!todo.check && !todo.reload && !todo.force && !todo.repaint) return true;  // a request, answered
 
     // the rest of the burst (requests are still answered at once)
     if (!todo.force) {
         while (std::optional<Notification> more = notifications_.receive_for(settle_)) take(std::move(*more), todo);
     }
     if (todo.reload) settings_changed();
-    check_wallpaper(todo.reload || todo.force);
+    if (todo.woke) hardware_woke(state_);
+    check_wallpaper(todo.reload || todo.force || todo.repaint);
     return true;
 }
 
@@ -65,6 +66,9 @@ void ServiceLoop::take(Notification notification, Todo& todo) {
         todo.check = true;
     } else if (std::holds_alternative<SettingsChangedNotice>(notification)) {
         todo.reload = true;
+    } else if (const auto* hardware = std::get_if<HardwareChangedNotice>(&notification)) {
+        todo.repaint = true;
+        todo.woke = todo.woke || hardware->woke;
     } else {
         RequestNotice& r = std::get<RequestNotice>(notification);
         ReadRequest read = read_request(parts_.codec, r.line);

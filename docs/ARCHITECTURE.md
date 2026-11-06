@@ -98,7 +98,8 @@ happened**. It doesn't run features or decide what happens next: the presentatio
 notification and does that.
 
 The service's events are `desktop_changed` (Plasma's signals, its settings files, a slideshow
-folder), `settings_changed` (the config file) and `request_received` (a line from the terminal).
+folder), `settings_changed` (the config file), `hardware_changed` (waking from sleep, a device
+plugged in) and `request_received` (a line from the terminal).
 The notifications they send are a model (`models/notifications.hpp`).
 
 ### `application/models/`: the structure of entities
@@ -223,16 +224,18 @@ src/
                                             report_status, exchange_messages
       contracts/                            desktop_wallpaper, desktop_signals,
                                             wallpaper_packages, colour_scheme, file_watch, clock,
-                                            memory, request_socket
+                                            memory, request_socket, system_signals
       contracts/external/                   driver_modules (drivers/host), pictures,
                                             settings_source, message_codec (shared/)
-      events/                               desktop_changed, settings_changed, request_received
+      events/                               desktop_changed, settings_changed, hardware_changed,
+                                            request_received
       models/                               service_state, service_parts, notifications,
                                             driver_module, wallpaper_settings, file_change
     infrastructure/
       services/                             plasma_shell (D-Bus), wallpaper_packages,
                                             colour_scheme (kdeglobals), file_watch (inotify),
-                                            clock, memory (malloc_trim), request_socket
+                                            clock, memory (malloc_trim), request_socket,
+                                            logind (system D-Bus)
       external/                             driver_modules, pictures, settings_source,
                                             message_codec
     presentation/
@@ -431,6 +434,7 @@ calls `notify_` with a notice. Add the notice to `models/notifications.hpp`, its
  kdeglobals, Plasma's settings file ──┤  events/desktop_changed
  Plasma's D-Bus signals ──────────────┤
  config.toml written ─────────────────┤  events/settings_changed
+ waking from sleep, a device added ───┤  events/hardware_changed
  a request from the terminal ─────────┤  events/request_received
                                       └─▶ notifications ─▶ presentation/service_loop
                                                                    │
@@ -466,7 +470,7 @@ checks them over time (the `R1`… tests drive `ServiceLoop::step()` with a fake
 | R1 | While the service doesn't know what is on screen (Plasma unreachable, no screen), a retry or a signal is armed to wake it. |
 | R2 | A due retry is always run and either cleared or moved on; it never stays due (the loop would spin). |
 | R3 | The folder watches match the folders on disk: folders created or removed under a slideshow folder too. |
-| R4 | Hardware that comes back (plugged in again, after a suspend, OpenLinkHub restarted) is painted again without waiting for the next wallpaper. |
+| R4 | Hardware that comes back (plugged in again, after a suspend) is painted again without waiting for the next wallpaper. Not heard yet: OpenLinkHub restarting (its server sends nothing to a client it no longer has). |
 | R5 | A thread that hears events doesn't stop silently: it starts again, or the service says so and checks everything. |
 
 A test marked `doctest::should_fail()` records a known break of a rule; it is unmarked with

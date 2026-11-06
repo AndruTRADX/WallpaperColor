@@ -16,13 +16,18 @@ namespace wpc {
 struct DesktopChangedNotice {};
 /// The settings may have changed.
 struct SettingsChangedNotice {};
+/// The hardware may have lost or regained its colours: paint again, even the same wallpaper.
+struct HardwareChangedNotice {
+    /// The computer woke from sleep: what the devices show is not known any more.
+    bool woke = false;
+};
 /// The terminal sent a request line; the answer line goes to `reply`.
 struct RequestNotice {
     std::string line;
     std::shared_ptr<Channel<std::string>> reply;
 };
 
-using Notification = std::variant<DesktopChangedNotice, SettingsChangedNotice, RequestNotice>;
+using Notification = std::variant<DesktopChangedNotice, SettingsChangedNotice, HardwareChangedNotice, RequestNotice>;
 using Notify = std::function<void(Notification)>;
 /// Where the notifications wait for the service loop.
 using Notifications = Channel<Notification>;

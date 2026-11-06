@@ -42,6 +42,8 @@ private:
         bool check = false;   // the wallpaper may have changed (or a retry is due)
         bool reload = false;  // the settings may have changed
         bool force = false;   // paint again now (a request)
+        bool repaint = false; // paint again, after the burst (the hardware changed)
+        bool woke = false;    // what the devices show is not known
     };
     void take(Notification notification, Todo& todo);
 
