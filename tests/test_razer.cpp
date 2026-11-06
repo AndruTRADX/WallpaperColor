@@ -101,11 +101,14 @@ struct FakeKeyboard final : razer::RazerKeyboard {
     int shows = 0;
     bool open() override {
         ++opens;
+        connected = true;  // a new handle
         opened = present;
         return present;
     }
     void close() override { opened = false; }
     bool is_open() const override { return opened; }
+    bool connected = true;  // false: unplugged since it was opened
+    bool still_connected() const override { return connected; }
     void set_row(uint8_t, std::span<const Rgb>) override {
         if (fail) throw Error("unplugged");
         ++rows;
@@ -137,4 +140,16 @@ TEST_CASE("the keyboard is opened when needed, absent is no device, and a failur
     CHECK_THROWS_AS(razer::show_frame(keyboard, state, std::span(&keys, 1)), Error);
     CHECK_FALSE(keyboard.is_open());  // opened again by the next list_devices()
     CHECK_THROWS_WITH(razer::show_frame(keyboard, state, std::span(&keys, 1)), "Razer keyboard: not open");
+}
+
+TEST_CASE("a keyboard plugged in again is opened again before painting, not failed on") {
+    FakeKeyboard keyboard;
+    razer::KeyboardState state;
+    REQUIRE(razer::list_devices(keyboard, state).size() == 1);
+
+    keyboard.connected = false;  // unplugged and plugged in again: the open one is gone
+    REQUIRE(razer::list_devices(keyboard, state).size() == 1);
+    CHECK(keyboard.opens == 2);
+    razer::list_devices(keyboard, state);
+    CHECK(keyboard.opens == 2);  // the new one is kept
 }

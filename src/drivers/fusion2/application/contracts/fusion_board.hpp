@@ -18,6 +18,9 @@ public:
     /// Closes it (opened again by the next open()).
     virtual void close() = 0;
     virtual bool is_open() const = 0;
+    /// False when the controller opened was unplugged since (plugged in again, it is another
+    /// device: the open one only answers "no such device").
+    virtual bool still_connected() const = 0;
     /// Shows `colour` on every single-colour zone. Throws wpc::Error.
     virtual void set_onboard(Rgb colour) = 0;
     /// Shows `colours` on the LEDs of ARGB header `header` (0 or 1), in order. Throws wpc::Error.

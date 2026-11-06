@@ -47,11 +47,14 @@ struct FakeBoard final : fusion2::FusionBoard {
     std::vector<Rgb> onboard;
     bool open(const fusion2::BoardSettings&) override {
         ++opens;
+        connected = true;  // a new handle
         opened = present;
         return present;
     }
     void close() override { opened = false; }
     bool is_open() const override { return opened; }
+    bool connected = true;  // false: unplugged since it was opened
+    bool still_connected() const override { return connected; }
     void set_onboard(Rgb c) override {
         if (fail) throw Error("unplugged");
         onboard.push_back(c);
@@ -84,4 +87,16 @@ TEST_CASE("the board is opened when needed, absent is no device, and a failure c
     CHECK_THROWS_AS(fusion2::show_frame(board, state, std::span(&onboard, 1)), Error);
     CHECK_FALSE(board.is_open());  // opened again by the next list_devices()
     CHECK_THROWS_WITH(fusion2::show_frame(board, state, std::span(&onboard, 1)), "motherboard RGB: not open");
+}
+
+TEST_CASE("a board controller that came back is opened again before painting, not failed on") {
+    FakeBoard board;
+    fusion2::BoardState state{{}, fusion2::board_layout({}), {}};
+    REQUIRE(fusion2::list_devices(board, state).size() == 1);
+
+    board.connected = false;
+    REQUIRE(fusion2::list_devices(board, state).size() == 1);
+    CHECK(board.opens == 2);
+    fusion2::list_devices(board, state);
+    CHECK(board.opens == 2);  // the new one is kept
 }

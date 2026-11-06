@@ -42,6 +42,7 @@ public:
     bool open(const BoardSettings& settings) override;
     void close() override { *this = Board(); }
     bool is_open() const override { return fd_.valid(); }
+    bool still_connected() const override;
 
     /// Shows `colour` on every single-colour zone. Throws wpc::Error.
     void set_onboard(Rgb colour) override;

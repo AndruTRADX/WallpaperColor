@@ -41,6 +41,7 @@ public:
     bool open() override;
     void close() override { fd_ = Fd(); }
     bool is_open() const override { return fd_.valid(); }
+    bool still_connected() const override;
     void set_row(uint8_t row, std::span<const Rgb> colours) override { send(row_report(row, colours)); }
     void show() override { send(show_report()); }
 

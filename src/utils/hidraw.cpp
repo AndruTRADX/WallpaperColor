@@ -63,6 +63,11 @@ void set_feature(const Fd& device, std::span<const uint8_t> report) {
     if (::ioctl(device.get(), HIDIOCSFEATURE(report.size()), report.data()) < 0) throw Error(os_error(errno));
 }
 
+bool connected(const Fd& device) {
+    hidraw_devinfo info{};
+    return ::ioctl(device.get(), HIDIOCGRAWINFO, &info) == 0;
+}
+
 void get_feature(const Fd& device, std::span<uint8_t> report) {
     if (::ioctl(device.get(), HIDIOCGFEATURE(report.size()), report.data()) < 0) throw Error(os_error(errno));
 }

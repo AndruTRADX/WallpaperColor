@@ -18,6 +18,9 @@ public:
     /// Closes it (opened again by the next open()).
     virtual void close() = 0;
     virtual bool is_open() const = 0;
+    /// False when the keyboard opened was unplugged since (plugged in again, it is another
+    /// device: the open one only answers "no such device").
+    virtual bool still_connected() const = 0;
     /// Loads the colours of one row of keys, from the first column on. Shown by show().
     /// Throws wpc::Error.
     virtual void set_row(uint8_t row, std::span<const Rgb> colours) = 0;

@@ -84,6 +84,10 @@ bool Board::open(const BoardSettings& settings) {
     return true;
 }
 
+bool Board::still_connected() const {
+    return hidraw::connected(fd_);
+}
+
 uint32_t Board::header_leds(int header) const {
     uint32_t sum = 0;
     for (uint32_t leds : header_fans_[header]) sum += leds;

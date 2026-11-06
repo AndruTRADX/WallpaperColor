@@ -32,6 +32,10 @@ Fd open(const std::filesystem::path& path, std::string_view udev_hint);
 /// Sends a feature report (its first byte is the report id). Throws wpc::Error.
 void set_feature(const Fd& device, std::span<const uint8_t> report);
 
+/// False when the device `device` was opened on is gone (unplugged; plugged in again it is a
+/// new device, with a new file).
+bool connected(const Fd& device);
+
 /// Reads a feature report into `report`, whose first byte says which. Throws wpc::Error.
 void get_feature(const Fd& device, std::span<uint8_t> report);
 

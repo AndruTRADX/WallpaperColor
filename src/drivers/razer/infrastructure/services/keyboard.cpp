@@ -89,6 +89,10 @@ bool HidKeyboard::open() {
     return true;
 }
 
+bool HidKeyboard::still_connected() const {
+    return hidraw::connected(fd_);
+}
+
 void HidKeyboard::send(const Report& report) {
     try {
         hidraw::set_feature(fd_, report);
