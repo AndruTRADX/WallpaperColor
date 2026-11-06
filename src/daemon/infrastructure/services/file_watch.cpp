@@ -53,7 +53,6 @@ struct InotifyFileWatch::State {
     std::mutex mutex;
     std::vector<Watch> watches;
     int next_id = 1;
-    bool stopped = false;
 
     /// Who hears `e`, with what. Also forgets the watches the kernel has ended.
     void deliveries(const FileEvent& e, std::vector<Delivery>& out) {
@@ -83,10 +82,10 @@ struct InotifyFileWatch::State {
 };
 
 InotifyFileWatch::InotifyFileWatch() : state_(std::make_shared<State>()) {
-    std::thread([state = state_] {
+    thread_ = std::thread([state = state_] {
         bool failing = false;
         while (true) {
-            std::vector<FileEvent> events;
+            std::optional<std::vector<FileEvent>> events;
             try {
                 events = state->inotify.read_events();
                 failing = false;
@@ -97,22 +96,22 @@ InotifyFileWatch::InotifyFileWatch() : state_(std::make_shared<State>()) {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 continue;
             }
-            for (const FileEvent& e : events) {
+            if (!events) return;  // stopped
+            for (const FileEvent& e : *events) {
                 std::vector<Delivery> deliveries;
                 {
                     std::lock_guard lock(state->mutex);
-                    if (state->stopped) return;
                     state->deliveries(e, deliveries);
                 }
                 for (const auto& [callback, change] : deliveries) callback(change);
             }
         }
-    }).detach();
+    });
 }
 
 InotifyFileWatch::~InotifyFileWatch() {
-    std::lock_guard lock(state_->mutex);
-    state_->stopped = true;  // the thread stops at its next event
+    state_->inotify.stop();
+    thread_.join();
 }
 
 int InotifyFileWatch::watch(const std::filesystem::path& folder, uint32_t what,

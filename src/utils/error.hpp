@@ -7,6 +7,7 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <system_error>
 #include <string>
 
 #include "utils/text.hpp"
@@ -19,9 +20,10 @@ struct [[gnu::visibility("default")]] Error : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-/// The text for errno `code`: "No such file or directory (os error 2)".
+/// The text for errno `code`: "No such file or directory (os error 2)". Safe on any thread
+/// (std::strerror may share one buffer between threads).
 inline std::string os_error(int code) {
-    return cat(std::strerror(code), " (os error ", code, ")");
+    return cat(std::system_category().message(code), " (os error ", code, ")");
 }
 
 }  // namespace wpc

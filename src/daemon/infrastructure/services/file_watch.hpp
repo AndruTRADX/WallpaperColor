@@ -5,6 +5,7 @@
 #pragma once
 
 #include <memory>
+#include <thread>
 
 #include "daemon/application/contracts/file_watch.hpp"
 
@@ -14,6 +15,7 @@ class InotifyFileWatch final : public FileWatch {
 public:
     /// Starts the thread. Throws wpc::Error.
     InotifyFileWatch();
+    /// Stops the thread and waits for it: no callback runs after this returns.
     ~InotifyFileWatch() override;
 
     int watch(const std::filesystem::path& folder, uint32_t what, std::function<void(const FileChange&)> changed) override;
@@ -24,6 +26,7 @@ public:
 private:
     struct State;
     std::shared_ptr<State> state_;  // shared with the thread
+    std::thread thread_;
 };
 
 }  // namespace wpc

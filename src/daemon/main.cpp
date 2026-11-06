@@ -82,5 +82,9 @@ int main(int argc, char** argv) {
     } catch (const Error& e) {
         log("wallpapercolord: {}", e.what());
         return EXIT_FAILURE;
+    } catch (const std::exception& e) {
+        // Not expected (a bug): said, instead of an abort with no message; systemd starts it again.
+        log("wallpapercolord: unexpected error: {}", e.what());
+        return EXIT_FAILURE;
     }
 }

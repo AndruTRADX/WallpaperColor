@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,11 +34,15 @@ public:
     int add(const std::filesystem::path& dir, uint32_t mask);
     void remove(int watch);
 
-    /// Waits for the next events. Throws wpc::Error.
-    std::vector<FileEvent> read_events();
+    /// Waits for the next events; nullopt once stop() was called. Throws wpc::Error.
+    std::optional<std::vector<FileEvent>> read_events();
+
+    /// Ends the wait of read_events(), now and from now on. Any thread may call it.
+    void stop();
 
 private:
     Fd fd_;
+    Fd stop_;  // an eventfd: readable once stop() was called
 };
 
 }  // namespace wpc

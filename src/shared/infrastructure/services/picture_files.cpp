@@ -52,7 +52,8 @@ enum class Format { Jpeg, Png, Webp, Other };
 Format sniff(FILE* file) {
     unsigned char head[12] = {};
     size_t n = std::fread(head, 1, sizeof head, file);
-    std::rewind(file);
+    if (std::fseek(file, 0, SEEK_SET) != 0) throw Error("cannot read image: " + os_error(errno));
+    std::clearerr(file);
     auto starts_with = [&](std::string_view magic, size_t at = 0) {
         return n >= at + magic.size() && std::memcmp(head + at, magic.data(), magic.size()) == 0;
     };
