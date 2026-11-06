@@ -126,6 +126,19 @@ if(WPC_PORTABLE)
 endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic)
+
+# Checking builds: -DWPC_SANITIZE=address (memory errors, leaks and undefined behaviour) or
+# -DWPC_SANITIZE=thread (data races). Never for an installed build.
+set(WPC_SANITIZE "" CACHE STRING "address or thread: build with those sanitizers")
+if(WPC_SANITIZE STREQUAL "address")
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined)
+elseif(WPC_SANITIZE STREQUAL "thread")
+  add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=thread)
+elseif(NOT WPC_SANITIZE STREQUAL "")
+  message(FATAL_ERROR "WPC_SANITIZE is address or thread, not ${WPC_SANITIZE}")
+endif()
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)   # link-time optimisation: smaller, faster
 
 # Version for --version and the IPC status, from project() above.

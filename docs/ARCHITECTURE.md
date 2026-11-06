@@ -547,3 +547,17 @@ build/src/wallpapercolor extract -p ~/Pictures/wallpapers/some.jpg
 
 `./install.sh` does the same, then installs both programs and the driver modules and restarts
 the service.
+
+Checking builds, kept apart from `build/`:
+
+```sh
+cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWPC_SANITIZE=address
+cmake --build build-asan && build-asan/tests/wpc_tests      # memory, leaks, undefined behaviour
+cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWPC_SANITIZE=thread
+cmake --build build-tsan && setarch -R build-tsan/tests/wpc_tests -tce="damaged files*"  # races
+```
+
+ThreadSanitizer can't follow the `longjmp` libjpeg and libpng use to report a damaged file,
+so that one test runs only under the address build. `setarch -R` is for kernels whose address
+randomisation is wider than ThreadSanitizer's memory map. The service itself runs the same way
+(`build-asan/src/wallpapercolord`, after `systemctl --user stop wallpapercolord`).
