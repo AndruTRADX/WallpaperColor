@@ -38,8 +38,9 @@ target_link_libraries(wpc_tests PRIVATE wpc_daemon_infrastructure wpc_terminal_i
   wpc_driver_openrgb wpc_driver_fusion2 wpc_driver_razer wpc_png doctest::doctest)
 target_compile_definitions(wpc_tests PRIVATE
   WPC_TEST_MODULES="${CMAKE_CURRENT_BINARY_DIR}/modules"
-  WPC_BUILT_MODULES="${PROJECT_BINARY_DIR}/src/drivers")
-add_dependencies(wpc_tests wpc_drivers wpc-driver-fake wpc-driver-fake-other)
+  WPC_BUILT_MODULES="${PROJECT_BINARY_DIR}/src/drivers"
+  WPC_BUILT_PICTURES="$<TARGET_FILE:wpc-pictures>")
+add_dependencies(wpc_tests wpc_drivers wpc-driver-fake wpc-driver-fake-other wpc-pictures)
 doctest_discover_tests(wpc_tests)
 
 # Every file is where its users are (docs/ARCHITECTURE.md, "Where things go").

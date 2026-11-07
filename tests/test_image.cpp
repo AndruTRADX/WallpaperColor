@@ -12,6 +12,7 @@
 #include "shared/domain/colours/picture.hpp"
 #include "shared/infrastructure/services/picture_files.hpp"
 #include "utils/error.hpp"
+#include "utils/picture_decoding.hpp"
 
 using namespace wpc;
 using namespace std::literals;
@@ -205,4 +206,67 @@ TEST_CASE("damaged files are errors, not crashes") {
     REQUIRE(stbi_write_png(path.c_str(), 300, 300, 3, data.data(), 300 * 3));
     fs::resize_file(path, fs::file_size(path) / 2);
     CHECK_THROWS_AS(PictureFiles().read(path, 10), Error);
+}
+
+namespace {
+
+/// Whether a file named `name` is mapped into this process.
+bool mapped(std::string_view name) {
+    std::ifstream maps("/proc/self/maps");
+    std::string line;
+    while (std::getline(maps, line)) {
+        if (line.ends_with(name)) return true;
+    }
+    return false;
+}
+
+/// Points WPC_PICTURES_MODULE somewhere else while it exists.
+struct PicturesModule {
+    explicit PicturesModule(const fs::path& file) { setenv("WPC_PICTURES_MODULE", file.c_str(), 1); }
+    ~PicturesModule() { setenv("WPC_PICTURES_MODULE", WPC_BUILT_PICTURES, 1); }
+};
+
+}  // namespace
+
+TEST_CASE("the decoders are in memory only while a picture is read") {
+    TempDir dir;
+    fs::path path = dir / "small.png";
+    std::vector<uint8_t> data = pixels(8, 8, [](uint32_t x, uint32_t) { return halves(x, 8); });
+    REQUIRE(stbi_write_png(path.c_str(), 8, 8, 3, data.data(), 8 * 3));
+
+    CHECK_FALSE(mapped("/wpc-pictures.so"));
+    CHECK(PictureFiles().read(path).width == 8);
+    CHECK_FALSE(mapped("/wpc-pictures.so"));
+}
+
+// (Named "damaged files…": libjpeg's longjmp, like the test above, is skipped under
+// ThreadSanitizer.)
+TEST_CASE("damaged files are errors after the decoders are unloaded") {
+    // An error thrown in the module arrives as wpc::Error, with its message, and the module is
+    // unloaded.
+    TempDir dir;
+    std::ofstream(dir / "bad.jpg", std::ios::binary) << "\xFF\xD8\xFF\xE0 not really a jpeg"sv;
+    try {
+        PictureFiles().read(dir / "bad.jpg");
+        FAIL("no error");
+    } catch (const Error& e) {
+        CHECK(std::string_view(e.what()).starts_with("cannot read image: "));
+    }
+    CHECK_FALSE(mapped("/wpc-pictures.so"));
+}
+
+TEST_CASE("pictures need the decoders' module of this build") {
+    TempDir dir;
+    fs::path path = dir / "small.png";
+    std::vector<uint8_t> data = pixels(2, 2, [](uint32_t x, uint32_t) { return halves(x, 2); });
+    REQUIRE(stbi_write_png(path.c_str(), 2, 2, 3, data.data(), 2 * 3));
+    {
+        PicturesModule missing(dir / "wpc-pictures.so");
+        CHECK_THROWS_WITH_AS(PictureFiles().read(path), doctest::Contains("cannot load"), Error);
+    }
+    {
+        PicturesModule other(fs::path(WPC_TEST_MODULES) / "wpc-driver-fake.so");  // not the decoders
+        CHECK_THROWS_WITH_AS(PictureFiles().read(path), doctest::Contains("has no picture decoders"), Error);
+    }
+    CHECK(PictureFiles().read(path).width == 2);
 }

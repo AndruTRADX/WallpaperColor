@@ -15,6 +15,9 @@ file in `src/` follows it, and `ctest` fails when a file doesn't.
 - **`shared/`**: what both programs must do the same way (the colours, the settings file,
   reading pictures, the protocol between them).
 - **`utils/`**: plain code that knows nothing about WallpaperColor.
+- **The picture decoders** (`src/utils/picture_decoding.cpp`): their own module,
+  `wpc-pictures.so`, with the image libraries; `shared/`'s `picture_files` loads it only while
+  it reads a picture.
 
 The terminal and the service talk over a Unix socket (`$XDG_RUNTIME_DIR/wallpapercolor.sock`):
 one JSON line in, one JSON line out. Settings never go through the socket: the terminal edits
@@ -284,12 +287,14 @@ src/
                                             (Painter), calibration
     domain/settings/                        the settings, in parts, and their rules
     models/protocol/                        the messages between terminal and service
-    infrastructure/services/                settings_file (toml++), picture_files (libjpeg-turbo,
-                                            libpng, libwebp, stb), protocol_json (nlohmann/json),
+    infrastructure/services/                settings_file (toml++), picture_files (loads the
+                                            decoders' module), protocol_json (nlohmann/json),
                                             socket_path
 
   utils/                                    error, text (cat), log, channel (the thread queue),
-                                            socket, inotify, hidraw, utf8, url, toml (TOML text)
+                                            socket, inotify, hidraw, utf8, url, toml (TOML text),
+                                            picture_decoding (libjpeg-turbo, libpng, libwebp,
+                                            stb: built as wpc-pictures.so, not into the programs)
 ```
 
 Each program's types that have the same name in the other (`DriverModules`, `DriverModule`,
@@ -525,6 +530,7 @@ carries the build's `WPC_BUILD_ID`, and a stale one is refused rather than crash
 | `Memory.release()` (`malloc_trim`) after each picture and each unload | It gives the memory back to the system. |
 | The picture format comes from the file's content | Many wallpapers are PNGs named `.jpg`. |
 | Drivers are separate `.so` files, loaded only while needed | A driver built into a program would be in memory even when switched off. |
+| The picture decoders are a separate `.so` (`wpc-pictures.so`), loaded only while a picture is read | The decoders and libjpeg, libpng, zlib and libwebp were about 1.2 MB of the service's memory and five of the fourteen libraries it loaded at startup, for a few seconds of work a day. Loading and unloading them takes under 0.1 ms, next to tens of milliseconds for the picture. |
 | toml++ compiled in (header-only), not the system's `libtomlplusplus.so` | Only the parsing used is kept: about 50 KB instead of a 250 KB library loaded at startup. |
 | Modules use plain C++ types, no C layer | They are always built and installed with the programs, and the build id refuses any other. |
 | Drivers build messages with `cat()`, not `std::format` | `std::format` adds about 70 KB to every module that uses it. |
@@ -547,8 +553,8 @@ python3 cmake/usage_map.py src               # who uses every file
 build/src/wallpapercolor extract -p ~/Pictures/wallpapers/some.jpg
 ```
 
-`./install.sh` does the same, then installs both programs and the driver modules and restarts
-the service.
+`./install.sh` does the same, then installs both programs, the driver modules and the picture
+decoders, and restarts the service.
 
 Checking builds, kept apart from `build/`:
 

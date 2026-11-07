@@ -150,7 +150,8 @@ add_compile_definitions(WPC_VERSION="${PROJECT_VERSION}")
 # programs refuse any other. It changes with the version, the compiler and the headers modules
 # and programs share, so a stale module is refused instead of crashing.
 set(WPC_DRIVER_API_FILES
-  src/drivers/sdk/driver.hpp src/drivers/sdk/hardware.hpp src/drivers/sdk/driver_settings.hpp src/shared/domain/colours/color.hpp)
+  src/drivers/sdk/driver.hpp src/drivers/sdk/hardware.hpp src/drivers/sdk/driver_settings.hpp src/shared/domain/colours/color.hpp
+  src/utils/picture_decoding.hpp)
 set(WPC_DRIVER_API_TEXT "")
 foreach(f ${WPC_DRIVER_API_FILES})
   file(READ "${PROJECT_SOURCE_DIR}/${f}" text)
@@ -166,7 +167,7 @@ include(cmake/drivers.cmake)
 # Otherwise the libraries installed on the system (README.md lists the packages).
 if(NOT WPC_PORTABLE)
   find_package(PkgConfig REQUIRED)
-  pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
+  pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebpdecoder)   # only the decoder
   add_library(wpc_webp INTERFACE)
   target_link_libraries(wpc_webp INTERFACE PkgConfig::WEBP)
   pkg_check_modules(JPEG REQUIRED IMPORTED_TARGET libjpeg)   # libjpeg-turbo

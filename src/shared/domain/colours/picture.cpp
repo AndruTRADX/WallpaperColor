@@ -5,12 +5,6 @@
 
 namespace wpc {
 
-uint32_t shrink_factor(uint32_t width, uint32_t height, uint32_t min_side) {
-    uint32_t smaller = std::min(width, height);
-    if (min_side == 0 || smaller <= min_side) return 1;
-    return smaller / min_side;
-}
-
 // ---------------------------------------------------------------------------------------------
 // Resize: a separable triangle filter. First every column is resampled to the new height
 // (kept as unrounded floats), then every row to the new width. Each output pixel is the

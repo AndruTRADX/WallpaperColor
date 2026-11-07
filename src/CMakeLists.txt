@@ -13,9 +13,22 @@
 # Used by several parts
 
 file(GLOB WPC_UTILS CONFIGURE_DEPENDS utils/*.cpp)
+list(REMOVE_ITEM WPC_UTILS ${CMAKE_CURRENT_SOURCE_DIR}/utils/picture_decoding.cpp)   # a module, below
 add_library(wpc_utils STATIC ${WPC_UTILS})
 target_include_directories(wpc_utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(wpc_utils PRIVATE wpc_toml)
+
+# The picture decoders and the image libraries, as their own file, wpc-pictures.so, next to the
+# programs: picture_files loads it only while it reads a picture, so they take no memory the
+# rest of the time. Built like a driver module (cmake/drivers.cmake).
+add_library(wpc-pictures MODULE utils/picture_decoding.cpp)
+target_include_directories(wpc-pictures PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(wpc-pictures PRIVATE wpc_jpeg wpc_png wpc_webp)
+target_compile_options(wpc-pictures PRIVATE -fno-gnu-unique)
+target_link_options(wpc-pictures PRIVATE -Wl,--exclude-libs,ALL -Wl,--no-undefined)
+set_target_properties(wpc-pictures PROPERTIES
+  PREFIX "" LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 
 # What a driver module is written against (header-only).
 add_library(wpc_drivers_sdk INTERFACE)
@@ -31,7 +44,8 @@ add_library(wpc_shared_settings_file STATIC shared/infrastructure/services/setti
 target_link_libraries(wpc_shared_settings_file PUBLIC wpc_shared_domain PRIVATE wpc_toml)
 
 add_library(wpc_shared_picture_files STATIC shared/infrastructure/services/picture_files.cpp)
-target_link_libraries(wpc_shared_picture_files PUBLIC wpc_shared_domain PRIVATE wpc_jpeg wpc_png wpc_webp)
+target_link_libraries(wpc_shared_picture_files PUBLIC wpc_shared_domain PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(wpc_shared_picture_files wpc-pictures)   # a program that reads pictures needs it
 
 add_library(wpc_shared_protocol STATIC
   shared/infrastructure/services/protocol_json.cpp shared/infrastructure/services/socket_path.cpp)

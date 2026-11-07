@@ -20,9 +20,10 @@ rm -rf "$stage" && mkdir -p "$stage"
 install -m755 -s build-portable/src/wallpapercolor  "$stage/wallpapercolor"
 install -m755 -s build-portable/src/wallpapercolord "$stage/wallpapercolord"
 install -Dm755 -s -t "$stage/drivers" build-portable/src/drivers/wpc-driver-*.so
+install -m755 -s build-portable/src/wpc-pictures.so "$stage/wpc-pictures.so"
 
 # A module with a GNU "unique" symbol could never be unloaded (see cmake/drivers.cmake).
-for module in "$stage"/drivers/*.so; do
+for module in "$stage"/drivers/*.so "$stage/wpc-pictures.so"; do
   if nm -D --defined-only "$module" | grep -q ' u '; then
     echo "$module has unique symbols: it could not be unloaded" >&2
     exit 1
@@ -38,7 +39,7 @@ tar -C build-portable -czf "dist/$name.tar.gz" --owner=0 --group=0 "$name"
 (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 
 echo "dist/$name.tar.gz"
-echo "Needs glibc $(objdump -T "$stage/wallpapercolord" "$stage/wallpapercolor" "$stage"/drivers/*.so |
+echo "Needs glibc $(objdump -T "$stage/wallpapercolord" "$stage/wallpapercolor" "$stage"/*.so "$stage"/drivers/*.so |
   grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1 | cut -d_ -f2) and libstdc++ $(objdump -T \
-  "$stage/wallpapercolord" "$stage/wallpapercolor" "$stage"/drivers/*.so |
+  "$stage/wallpapercolord" "$stage/wallpapercolor" "$stage"/*.so "$stage"/drivers/*.so |
   grep -o 'GLIBCXX_[0-9.]*' | sort -Vu | tail -1 | cut -d_ -f2) or newer."

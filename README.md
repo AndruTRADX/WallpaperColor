@@ -53,8 +53,9 @@ cd wallpapercolor-*-x86_64
 ./install.sh
 ```
 
-`install.sh` installs `~/.local/bin/wallpapercolor`, `~/.local/bin/wallpapercolord` and the
-driver modules in `~/.local/lib/wallpapercolor/drivers/`, and enables and starts the
+`install.sh` installs `~/.local/bin/wallpapercolor`, `~/.local/bin/wallpapercolord`, the
+driver modules in `~/.local/lib/wallpapercolor/drivers/` and the picture decoders
+(`~/.local/lib/wallpapercolor/wpc-pictures.so`), and enables and starts the
 `wallpapercolord` user service. It starts with your graphical session
 from then on. `./install.sh --no-start` installs without starting it. To update, download the
 new release and run its `install.sh`.
@@ -297,7 +298,7 @@ journalctl --user -u wallpapercolord -f      # its log, live
 ```sh
 systemctl --user disable --now wallpapercolord
 rm ~/.local/bin/wallpapercolor ~/.local/bin/wallpapercolord ~/.config/systemd/user/wallpapercolord.service
-rm -r ~/.local/lib/wallpapercolor                       # the driver modules
+rm -r ~/.local/lib/wallpapercolor                       # the driver modules and picture decoders
 sudo rm /etc/udev/rules.d/70-wallpapercolor.rules     # if you installed it
 rm -r ~/.config/wallpapercolor                          # your settings
 ```

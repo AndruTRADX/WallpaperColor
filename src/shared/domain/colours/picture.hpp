@@ -27,10 +27,6 @@ struct Picture {
     float sample(size_t i) const { return is_16_bit() ? rgb16[i] : rgb8[i]; }
 };
 
-/// How much a `width` × `height` picture may be shrunk so that both sides stay at least
-/// `min_side`: the largest whole number that works, at least 1.
-uint32_t shrink_factor(uint32_t width, uint32_t height, uint32_t min_side);
-
 /// Resizes to exactly `width` × `height` with a triangle (linear) filter, then converts to
 /// 8 bits per channel.
 std::vector<std::array<uint8_t, 3>> resize_to_rgb8(const Picture& image, uint32_t width,
