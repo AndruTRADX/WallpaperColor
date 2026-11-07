@@ -531,6 +531,7 @@ carries the build's `WPC_BUILD_ID`, and a stale one is refused rather than crash
 | The picture format comes from the file's content | Many wallpapers are PNGs named `.jpg`. |
 | Drivers are separate `.so` files, loaded only while needed | A driver built into a program would be in memory even when switched off. |
 | The picture decoders are a separate `.so` (`wpc-pictures.so`), loaded only while a picture is read | The decoders and libjpeg, libpng, zlib and libwebp were about 1.2 MB of the service's memory and five of the fourteen libraries it loaded at startup, for a few seconds of work a day. Loading and unloading them takes under 0.1 ms, next to tens of milliseconds for the picture. |
+| Release builds use `-Os`, except the loops over pixels (the decoders' module `-O3`, the colour maths `-O2`) | The service's work is light; its code is what it costs. `-Os` halves it against `-O3`, and the colours come out the same. |
 | toml++ compiled in (header-only), not the system's `libtomlplusplus.so` | Only the parsing used is kept: about 50 KB instead of a 250 KB library loaded at startup. |
 | Modules use plain C++ types, no C layer | They are always built and installed with the programs, and the build id refuses any other. |
 | Drivers build messages with `cat()`, not `std::format` | `std::format` adds about 70 KB to every module that uses it. |

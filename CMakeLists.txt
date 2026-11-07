@@ -129,6 +129,13 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
+# Release: optimised for size. The service sleeps nearly all the time and its work is light
+# (about 100×100 pixels, 25 frames a second), so its code is what it costs: -Os halves it
+# against CMake's -O3. The two loops over pixels keep their speed (src/CMakeLists.txt): the
+# picture decoders, a module of their own, -O3; the colour maths -O2. The libraries
+# downloaded above keep their own flags.
+add_compile_options($<$<CONFIG:Release>:-Os>)
+
 # Checking builds: -DWPC_SANITIZE=address (memory errors, leaks and undefined behaviour) or
 # -DWPC_SANITIZE=thread (data races). Never for an installed build.
 set(WPC_SANITIZE "" CACHE STRING "address or thread: build with those sanitizers")
