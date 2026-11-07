@@ -8,8 +8,9 @@ the motherboard fade to its colours.
 
 DEV Notes: [What's' is this project even about](docs/DEV_NOTES.md).
 
-- **`wallpapercolord`**: the background service. Light and event-driven: about 7.5 MB of RAM and
-  no CPU while nothing changes.
+- **`wallpapercolord`**: the background service. Light and event-driven: about 7.5 MB of RAM (2.5 MB
+  of its own, the rest system libraries shared with other programs), two threads, and no CPU
+  while nothing changes.
 - **`wallpapercolor`**: a terminal UI to watch and configure it, plus commands. The service
   works without it.
 
