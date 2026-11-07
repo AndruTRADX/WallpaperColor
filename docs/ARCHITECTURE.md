@@ -525,6 +525,7 @@ carries the build's `WPC_BUILD_ID`, and a stale one is refused rather than crash
 | `Memory.release()` (`malloc_trim`) after each picture and each unload | It gives the memory back to the system. |
 | The picture format comes from the file's content | Many wallpapers are PNGs named `.jpg`. |
 | Drivers are separate `.so` files, loaded only while needed | A driver built into a program would be in memory even when switched off. |
+| toml++ compiled in (header-only), not the system's `libtomlplusplus.so` | Only the parsing used is kept: about 50 KB instead of a 250 KB library loaded at startup. |
 | Modules use plain C++ types, no C layer | They are always built and installed with the programs, and the build id refuses any other. |
 | Drivers build messages with `cat()`, not `std::format` | `std::format` adds about 70 KB to every module that uses it. |
 | One driver failing doesn't stop the others | Each driver's errors are kept apart; the others are painted, and the failed one is retried. |

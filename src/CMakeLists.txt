@@ -15,7 +15,7 @@
 file(GLOB WPC_UTILS CONFIGURE_DEPENDS utils/*.cpp)
 add_library(wpc_utils STATIC ${WPC_UTILS})
 target_include_directories(wpc_utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(wpc_utils PRIVATE tomlplusplus::tomlplusplus)
+target_link_libraries(wpc_utils PRIVATE wpc_toml)
 
 # What a driver module is written against (header-only).
 add_library(wpc_drivers_sdk INTERFACE)
@@ -28,7 +28,7 @@ target_link_libraries(wpc_shared_domain PUBLIC wpc_drivers_sdk)
 
 # The shared services, one library each: a program links only those it uses.
 add_library(wpc_shared_settings_file STATIC shared/infrastructure/services/settings_file.cpp)
-target_link_libraries(wpc_shared_settings_file PUBLIC wpc_shared_domain PRIVATE tomlplusplus::tomlplusplus)
+target_link_libraries(wpc_shared_settings_file PUBLIC wpc_shared_domain PRIVATE wpc_toml)
 
 add_library(wpc_shared_picture_files STATIC shared/infrastructure/services/picture_files.cpp)
 target_link_libraries(wpc_shared_picture_files PUBLIC wpc_shared_domain PRIVATE wpc_jpeg wpc_png wpc_webp)

@@ -122,6 +122,8 @@ if(WPC_PORTABLE)
   add_library(wpc_png INTERFACE)
   target_link_libraries(wpc_png INTERFACE png_static)
   target_include_directories(wpc_png INTERFACE "${libpng_SOURCE_DIR}" "${libpng_BINARY_DIR}")
+  add_library(wpc_toml INTERFACE)
+  target_link_libraries(wpc_toml INTERFACE tomlplusplus::tomlplusplus)
 
 endif()
 
@@ -173,7 +175,12 @@ if(NOT WPC_PORTABLE)
   pkg_check_modules(PNG REQUIRED IMPORTED_TARGET libpng16)
   add_library(wpc_png INTERFACE)
   target_link_libraries(wpc_png INTERFACE PkgConfig::PNG)
+  # toml++ is compiled into the programs (header-only), not used as the system's shared
+  # libtomlplusplus: only the parts used are kept, and one library less is loaded.
   find_package(tomlplusplus REQUIRED)
+  add_library(wpc_toml INTERFACE)
+  get_target_property(WPC_TOML_INCLUDE tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
+  target_include_directories(wpc_toml INTERFACE ${WPC_TOML_INCLUDE})
   find_package(nlohmann_json REQUIRED)
   find_package(CLI11 REQUIRED)
   find_package(sdbus-c++ REQUIRED)
