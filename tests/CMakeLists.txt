@@ -30,6 +30,7 @@ add_executable(wpc_tests
   test_settings.cpp
   test_service.cpp
   test_file_watch.cpp
+  test_event_loop.cpp
   test_daemon_domain.cpp
   test_driver_modules.cpp
   test_terminal.cpp
