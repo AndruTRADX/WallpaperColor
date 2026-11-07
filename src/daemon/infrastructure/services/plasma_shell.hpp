@@ -1,14 +1,17 @@
 // Service: KDE Plasma over D-Bus. The wallpaper settings of the first screen
 // (org.kde.PlasmaShell.wallpaper: its `Image` is the picture on screen right now, including the
 // current slide of a slideshow), Plasma's signals, and the files Plasma writes its settings to.
-// Plasma signals `wallpaperChanged` only when the settings change, not on every slide.
+// Plasma signals `wallpaperChanged` only when the settings change, not on every slide. The
+// signals are read in the service's loop (no thread of their own).
 
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include "daemon/application/contracts/desktop_signals.hpp"
 #include "daemon/application/contracts/desktop_wallpaper.hpp"
+#include "utils/event_loop.hpp"
 
 namespace sdbus {
 class IConnection;
@@ -19,8 +22,8 @@ namespace wpc {
 
 class PlasmaShell final : public DesktopWallpaper, public DesktopSignals {
 public:
-    /// Connects to the session bus. Throws wpc::Error.
-    PlasmaShell();
+    /// Connects to the session bus; its signals will be heard in `loop`. Throws wpc::Error.
+    explicit PlasmaShell(EventLoop& loop);
     ~PlasmaShell() override;
 
     WallpaperSettings current() override;
@@ -34,6 +37,8 @@ public:
 private:
     std::unique_ptr<sdbus::IConnection> connection_;
     std::unique_ptr<sdbus::IProxy> proxy_;
+    EventLoop& loop_;
+    std::optional<BusFds> bus_fds_;  // while listening
 };
 
 }  // namespace wpc

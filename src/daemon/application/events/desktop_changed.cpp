@@ -24,7 +24,6 @@ void DesktopChangedEvent::start() {
 }
 
 void DesktopChangedEvent::showing(const std::optional<fs::path>& picture) {
-    std::lock_guard lock(mutex_);
     on_screen_ = picture;
 }
 
@@ -58,10 +57,7 @@ void DesktopChangedEvent::slide_changed(const FileChange& c) {
         reread_ = true;
         return notify_(DesktopChangedNotice{});
     }
-    if (c.opened) {
-        std::lock_guard lock(mutex_);
-        if (on_screen_ == c.folder / c.name) return;  // the service reading the picture on screen
-    }
+    if (c.opened && on_screen_ == c.folder / c.name) return;  // the service reading the picture on screen
     if (is_picture_name(c.name)) notify_(DesktopChangedNotice{});
 }
 

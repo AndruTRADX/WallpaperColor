@@ -202,7 +202,7 @@ real service into its `Driver`.
 | | A service method | A utility |
 | --- | --- | --- |
 | What | A job **of the application** that touches the outside or keeps state | Plain code that knows nothing about WallpaperColor and keeps no state |
-| Examples | ask Plasma for the wallpaper, load a driver, read the settings file, show a frame | wrap a socket, inotify or `/dev/hidraw`; parse UTF-8, a URL, TOML text; `cat()`; the log; the thread queue |
+| Examples | ask Plasma for the wallpaper, load a driver, read the settings file, show a frame | wrap a socket, inotify, epoll or `/dev/hidraw`; parse UTF-8, a URL, TOML text; `cat()`; the log; the queues |
 | Reached | through a contract, so a feature can be tested with a fake | directly, by `#include "utils/…"` |
 | Where | `infrastructure/services/` | `utils/`, even if one part uses it |
 
@@ -292,7 +292,8 @@ src/
                                             socket_path
 
   utils/                                    error, text (cat), log, channel (the thread queue),
-                                            socket, inotify, hidraw, utf8, url, toml (TOML text),
+                                            event_loop (epoll), event_queue (its queue), socket,
+                                            inotify, hidraw, utf8, url, toml (TOML text),
                                             picture_decoding (libjpeg-turbo, libpng, libwebp,
                                             stb: built as wpc-pictures.so, not into the programs)
 ```
@@ -462,7 +463,24 @@ Requests are answered at once; one that waits more than 2 s (during a fade) gets
 A fade sends 25 frames a second, blending each LED from what was sent last to its new colour,
 for `[led] fade` seconds (at most 1.5). If a driver or Plasma doesn't answer, the service
 retries after 2 s, 4 s, 8 s … up to 60 s, and paints the other drivers meanwhile. While nothing
-happens, every thread sleeps in the kernel: 0 % CPU, about 2.5 MB of memory of its own.
+happens, both threads sleep in the kernel: 0 % CPU, about 2.5 MB of memory of its own.
+
+### Two threads
+
+The service runs on **one loop** (`utils/event_loop`, epoll) and one more thread:
+
+- **The loop's thread** (`main`) waits in one `epoll_wait` for everything the events hear: the
+  inotify fd (`file_watch`), the session bus (`plasma_shell`) and the system bus (`logind`),
+  whose messages sd-bus reads and dispatches on this thread (no `enterEventLoopAsync`). The
+  retry and the 0.8 s of a burst are that wait's timeout. Every event's callback and every
+  feature run here, one at a time: what they share needs no lock.
+- **The request socket's thread** accepts the terminal's connections and waits for the loop's
+  answer. It is a thread of its own so a request still gets "service busy" after 2 s while the
+  loop is in a fade or waiting for Plasma. It hands the request over through `Notifications`
+  (`utils/event_queue`), whose `send()` wakes the loop (an eventfd).
+
+A source that fails (inotify, a D-Bus connection lost) ends the service with the reason in the
+log, and systemd starts it again (`Restart=on-failure`): nothing goes deaf silently (R5).
 
 ### Rules that keep the service from going deaf
 
@@ -477,7 +495,7 @@ checks them over time (the `R1`… tests drive `ServiceLoop::step()` with a fake
 | R2 | A due retry is always run and either cleared or moved on; it never stays due (the loop would spin). |
 | R3 | The folder watches match the folders on disk: folders created or removed under a slideshow folder too. |
 | R4 | Hardware that comes back (plugged in again, after a suspend) is painted again without waiting for the next wallpaper. Not heard yet: OpenLinkHub restarting (its server sends nothing to a client it no longer has). |
-| R5 | A thread that hears events doesn't stop silently: it starts again, or the service says so and checks everything. |
+| R5 | What hears events doesn't stop silently: it starts again, or the service says so and checks everything. |
 
 A test marked `doctest::should_fail()` records a known break of a rule; it is unmarked with
 the fix.
@@ -525,7 +543,8 @@ carries the build's `WPC_BUILD_ID`, and a stale one is refused rather than crash
 | inotify on the slideshow folders | Plasma sends no signal when the slide changes, but plasmashell opens the next picture. |
 | `desktop_changed` ignores opens of the picture on screen | The service opens it itself to read it; otherwise each read would trigger the next. |
 | Watching `plasma-org.kde.plasma.desktop-appletsrc` and `kdeglobals` | Choosing a wallpaper doesn't always send a signal; a light/dark switch can pick another picture of a package. |
-| One `file_watch` service (one inotify thread) | The settings file and KDE's files both live in `~/.config`; one thread serves every watch. |
+| One `file_watch` service (one inotify instance) | The settings file and KDE's files both live in `~/.config`; one inotify fd serves every watch. |
+| One loop for inotify and both D-Buses, not a thread each | A thread costs a stack, a malloc arena and two wakeups per event (its own, then the loop's). With one loop: 2 threads instead of 5, about 50 KB less private memory and 220 MB less address space, half the wakeups in a burst, and no locks between events and features. |
 | Pictures are never decoded at full size | Only ~100×100 pixels are looked at. libjpeg-turbo decodes at 1/2–1/8 size, PNG rows are averaged as libpng reads them, libwebp scales while decoding. A 6656×3744 PNG used to take 246 MB for a moment; now well under 1 MB. The exception is a **progressive** JPEG: libjpeg must keep all its coefficients even when it decodes at 1/8, so a 3840×2160 one still peaks around 50 MB, for a moment, and the memory is given back after. |
 | `Memory.release()` (`malloc_trim`) after each picture and each unload | It gives the memory back to the system. |
 | The picture format comes from the file's content | Many wallpapers are PNGs named `.jpg`. |

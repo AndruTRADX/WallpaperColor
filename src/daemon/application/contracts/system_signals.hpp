@@ -10,7 +10,7 @@ namespace wpc {
 class SystemSignals {
 public:
     virtual ~SystemSignals() = default;
-    /// Calls `woke` (from any thread) when the computer wakes from sleep: devices may have
+    /// Calls `woke` (on the service's loop) when the computer wakes from sleep: devices may have
     /// lost their colours. Throws wpc::Error.
     virtual void listen(std::function<void()> woke) = 0;
     /// Where the kernel adds a device's file when one is plugged in.

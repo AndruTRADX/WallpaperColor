@@ -12,9 +12,7 @@
 
 #pragma once
 
-#include <atomic>
 #include <filesystem>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -51,9 +49,8 @@ private:
     std::vector<int> slide_watches_;
     /// Every folder of slide_folders_ is watched.
     bool following_all_ = true;
-    /// The folders changed: read them again (set on the file watch's thread).
-    std::atomic<bool> reread_{false};
-    std::mutex mutex_;  // on_screen_ is read on the file watch's thread
+    /// The folders changed: read them again.
+    bool reread_ = false;
     std::optional<std::filesystem::path> on_screen_;
 };
 

@@ -1,14 +1,11 @@
 #include "daemon/infrastructure/services/file_watch.hpp"
 
 #include <algorithm>
-#include <chrono>
-#include <mutex>
-#include <thread>
 #include <vector>
 
 #include "utils/error.hpp"
+#include "utils/event_loop.hpp"
 #include "utils/inotify.hpp"
-#include "utils/log.hpp"
 
 namespace wpc {
 
@@ -50,7 +47,6 @@ struct InotifyFileWatch::State {
     };
 
     Inotify inotify;
-    std::mutex mutex;
     std::vector<Watch> watches;
     int next_id = 1;
 
@@ -81,42 +77,33 @@ struct InotifyFileWatch::State {
     }
 };
 
-InotifyFileWatch::InotifyFileWatch() : state_(std::make_shared<State>()) {
-    thread_ = std::thread([state = state_] {
-        bool failing = false;
-        while (true) {
-            std::optional<std::vector<FileEvent>> events;
-            try {
-                events = state->inotify.read_events();
-                failing = false;
-            } catch (const Error& e) {
-                // Not expected; going on beats going deaf for good. Said once, tried every second.
-                if (!failing) log("file watch: {} (trying again every second)", e.what());
-                failing = true;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                continue;
-            }
-            if (!events) return;  // stopped
-            for (const FileEvent& e : *events) {
-                std::vector<Delivery> deliveries;
-                {
-                    std::lock_guard lock(state->mutex);
-                    state->deliveries(e, deliveries);
-                }
-                for (const auto& [callback, change] : deliveries) callback(change);
-            }
-        }
-    });
+InotifyFileWatch::InotifyFileWatch(EventLoop& loop) : loop_(loop), state_(std::make_unique<State>()) {
+    loop_.add(state_->inotify.fd(), EPOLLIN, [this] { deliver(); });
 }
 
 InotifyFileWatch::~InotifyFileWatch() {
-    state_->inotify.stop();
-    thread_.join();
+    loop_.remove(state_->inotify.fd());
+}
+
+void InotifyFileWatch::deliver() {
+    std::vector<FileEvent> events;
+    try {
+        events = state_->inotify.read_events();
+    } catch (const Error& e) {
+        // Not expected. Going on would wake the loop again at once, for ever: the service stops
+        // and says why, and systemd starts it again (R5).
+        throw Error(std::string("file watch: ") + e.what());
+    }
+    for (const FileEvent& e : events) {
+        // Who hears it is decided first: a callback may watch or unwatch.
+        std::vector<Delivery> deliveries;
+        state_->deliveries(e, deliveries);
+        for (const auto& [callback, change] : deliveries) callback(change);
+    }
 }
 
 int InotifyFileWatch::watch(const std::filesystem::path& folder, uint32_t what,
                             std::function<void(const FileChange&)> changed) {
-    std::lock_guard lock(state_->mutex);
     uint32_t mask = inotify_mask(what);
     // Watching a folder again gives the same inotify id; IN_MASK_ADD widens what it reports
     // instead of replacing it.
@@ -139,7 +126,6 @@ int InotifyFileWatch::watch_tree(const std::filesystem::path& folder, uint32_t w
             if (entry.symlink_status(e).type() == std::filesystem::file_type::directory) folders.push_back(entry.path());
         }
     }
-    std::lock_guard lock(state_->mutex);
     uint32_t mask = inotify_mask(what);
     int id = state_->next_id++;
     for (const std::filesystem::path& f : folders) {
@@ -150,7 +136,6 @@ int InotifyFileWatch::watch_tree(const std::filesystem::path& folder, uint32_t w
 }
 
 void InotifyFileWatch::unwatch(int id) {
-    std::lock_guard lock(state_->mutex);
     auto& watches = state_->watches;
     std::vector<int> folders;
     for (const State::Watch& w : watches) {

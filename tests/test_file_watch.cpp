@@ -6,9 +6,10 @@
 #include <chrono>
 #include <cstdlib>  // mkdtemp
 #include <fstream>
+#include <thread>
 
 #include "daemon/infrastructure/services/file_watch.hpp"
-#include "utils/channel.hpp"
+#include "utils/event_queue.hpp"
 
 using namespace wpc;
 namespace fs = std::filesystem;
@@ -28,9 +29,10 @@ struct TempFolder {
     }
 };
 
-/// The changes a watch heard, in order.
+/// The changes a watch heard, in order. Waiting for one runs `loop`, which reads inotify.
 struct Heard {
-    Channel<FileChange> changes;
+    explicit Heard(EventLoop& loop) : changes(loop) {}
+    EventQueue<FileChange> changes;
     std::function<void(const FileChange&)> callback() {
         return [this](const FileChange& c) { changes.send(c); };
     }
@@ -51,8 +53,9 @@ struct Heard {
 TEST_CASE("file watch: a folder created or moved in is a created folder") {
     TempFolder temp;
     fs::create_directory(temp.path / "outside");
-    Heard heard;  // before the watch: it is still there while the watch stops
-    InotifyFileWatch files;
+    EventLoop loop;
+    Heard heard(loop);  // before the watch: it is still there while the watch stops
+    InotifyFileWatch files(loop);
     files.watch_tree(temp.path, FILE_CREATED | FILE_REMOVED, heard.callback());
 
     fs::create_directory(temp.path / "made");
@@ -74,9 +77,10 @@ TEST_CASE("file watch: the watched folder removed says so, and can be watched ag
     TempFolder temp;
     fs::path slides = temp.path / "slides";
     fs::create_directory(slides);
-    Heard heard;
-    Heard again;
-    InotifyFileWatch files;
+    EventLoop loop;
+    Heard heard(loop);
+    Heard again(loop);
+    InotifyFileWatch files(loop);
     int id = files.watch_tree(slides, FILE_OPENED | FILE_CREATED | FILE_REMOVED, heard.callback());
 
     fs::remove(slides);
@@ -94,4 +98,18 @@ TEST_CASE("file watch: the watched folder removed says so, and can be watched ag
     CHECK(created->created);
     CHECK_FALSE(heard.wait_for([](const FileChange& c) { return c.name == "red.png"; },
                                std::chrono::milliseconds(200)));  // the old one is over
+}
+
+TEST_CASE("file watch: changes are heard on the thread that runs the loop, with no thread of its own") {
+    TempFolder temp;
+    EventLoop loop;
+    std::optional<std::thread::id> heard_on;
+    InotifyFileWatch files(loop);
+    files.watch(temp.path, FILE_CREATED, [&](const FileChange&) { heard_on = std::this_thread::get_id(); });
+
+    std::ofstream(temp.path / "red.png") << "x";
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(heard_on);  // nothing runs until the loop does
+    loop.run_once(std::chrono::seconds(2));
+    CHECK(heard_on == std::this_thread::get_id());
 }

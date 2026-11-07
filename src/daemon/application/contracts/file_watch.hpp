@@ -13,8 +13,8 @@ namespace wpc {
 class FileWatch {
 public:
     virtual ~FileWatch() = default;
-    /// Calls `changed` (from another thread) for every change of kind `what` (FileChanges)
-    /// in `folder`. Returns an id for unwatch(). Throws wpc::Error.
+    /// Calls `changed` (on the service's loop, as the other events) for every change of kind
+    /// `what` (FileChanges) in `folder`. Returns an id for unwatch(). Throws wpc::Error.
     virtual int watch(const std::filesystem::path& folder, uint32_t what,
                       std::function<void(const FileChange&)> changed) = 0;
     /// The same for `folder` and every folder below it, as one watch.

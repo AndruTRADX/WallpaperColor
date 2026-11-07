@@ -11,7 +11,7 @@ namespace wpc {
 class DesktopSignals {
 public:
     virtual ~DesktopSignals() = default;
-    /// Calls `changed` (from any thread) on the desktop's own signals (wallpaper settings
+    /// Calls `changed` (on the service's loop) on the desktop's own signals (wallpaper settings
     /// changed, the desktop restarted). Throws wpc::Error.
     virtual void listen(std::function<void()> changed) = 0;
     /// The desktop's files whose writing may change the wallpaper (settings, colour scheme).

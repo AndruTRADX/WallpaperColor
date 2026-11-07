@@ -164,7 +164,8 @@ struct Setup {
     FakeClock clock;
     FakeMemory memory;
     FakeFiles files;
-    Notifications notifications;
+    EventLoop events;  // nothing waits in it: the fakes send at once
+    Notifications notifications{events};
     DesktopChangedEvent desktop_changed{desktop, files, [this](Notification n) { notifications.send(std::move(n)); }};
 
     /// No settle time: a burst is over as soon as nothing is waiting.

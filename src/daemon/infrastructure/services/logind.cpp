@@ -3,16 +3,19 @@
 #include <sdbus-c++/sdbus-c++.h>
 
 #include "utils/error.hpp"
+#include "utils/event_loop.hpp"
 
 namespace wpc {
 
-Logind::Logind() = default;
+Logind::Logind(EventLoop& loop) : loop_(loop) {}
 
-Logind::~Logind() = default;
+Logind::~Logind() {
+    if (bus_fds_) remove_bus(loop_, *bus_fds_);
+}
 
 void Logind::listen(std::function<void()> woke) {
     try {
-        connection_ = sdbus::createSystemBusConnection();
+        std::unique_ptr<sdbus::IConnection> connection = sdbus::createSystemBusConnection();
         auto on_message = [woke](sdbus::Message message) {
             bool going_to_sleep = true;
             try {
@@ -22,11 +25,12 @@ void Logind::listen(std::function<void()> woke) {
             }
             if (!going_to_sleep) woke();
         };
-        connection_->addMatch(
+        connection->addMatch(
             "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',"
             "member='PrepareForSleep'",
             on_message);
-        connection_->enterEventLoopAsync();
+        bus_fds_ = add_bus(loop_, *connection);
+        connection_ = std::move(connection);
     } catch (const sdbus::Error& e) {
         throw Error(e.what());
     }

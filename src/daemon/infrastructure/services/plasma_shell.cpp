@@ -6,6 +6,7 @@
 #include <sdbus-c++/sdbus-c++.h>
 
 #include "utils/error.hpp"
+#include "utils/event_loop.hpp"
 #include "utils/url.hpp"
 
 namespace wpc {
@@ -18,7 +19,7 @@ const char* const PATH = "/PlasmaShell";
 const char* const INTERFACE = "org.kde.PlasmaShell";
 }  // namespace
 
-PlasmaShell::PlasmaShell() {
+PlasmaShell::PlasmaShell(EventLoop& loop) : loop_(loop) {
     try {
         connection_ = sdbus::createSessionBusConnection();
         proxy_ = sdbus::createProxy(*connection_, sdbus::ServiceName{SERVICE}, sdbus::ObjectPath{PATH});
@@ -27,7 +28,9 @@ PlasmaShell::PlasmaShell() {
     }
 }
 
-PlasmaShell::~PlasmaShell() = default;
+PlasmaShell::~PlasmaShell() {
+    if (bus_fds_) remove_bus(loop_, *bus_fds_);
+}
 
 WallpaperSettings PlasmaShell::current() {
     std::map<std::string, sdbus::Variant> settings;
@@ -65,7 +68,7 @@ void PlasmaShell::listen(std::function<void()> changed) {
             "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',"
             "member='NameOwnerChanged',arg0='org.kde.plasmashell'",
             on_message);
-        connection_->enterEventLoopAsync();
+        bus_fds_ = add_bus(loop_, *connection_);
     } catch (const sdbus::Error& e) {
         throw Error(e.what());
     }

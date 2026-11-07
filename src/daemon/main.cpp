@@ -29,6 +29,7 @@
 #include "shared/infrastructure/services/settings_file.hpp"
 #include "shared/infrastructure/services/socket_path.hpp"
 #include "utils/error.hpp"
+#include "utils/event_loop.hpp"
 #include "utils/log.hpp"
 
 using namespace wpc;
@@ -39,7 +40,10 @@ int main(int argc, char** argv) {
         std::optional<fs::path> path = argc > 1 ? std::optional<fs::path>(argv[1]) : SettingsFile().default_path();
         if (!path) throw Error("no config path: set HOME or XDG_CONFIG_HOME");
 
-        InotifyFileWatch files;  // one inotify thread for the settings file and KDE's files
+        // The service's one wait: inotify, both D-Buses, the retry and burst timeouts, and the
+        // request socket's thread handing a request over.
+        EventLoop events;
+        InotifyFileWatch files(events);  // one inotify for the settings file and KDE's files
         SettingsFileSource settings(*path);
         HostDriverModules drivers;
         PictureFilesAdapter pictures;
@@ -50,14 +54,14 @@ int main(int argc, char** argv) {
         KdeColourScheme scheme;
         std::optional<PlasmaShell> plasma;
         try {
-            plasma.emplace();
+            plasma.emplace(events);
         } catch (const Error& e) {
             throw Error(std::string("cannot reach the session bus: ") + e.what());
         }
-        Logind logind;
+        Logind logind(events);
         UnixRequestSocket socket(SocketPath().path());
 
-        Notifications notifications;
+        Notifications notifications(events);
         Notify notify = [&notifications](Notification n) { notifications.send(std::move(n)); };
         DesktopChangedEvent desktop_changed(*plasma, files, notify);
         SettingsChangedEvent settings_changed(settings, files, notify);

@@ -9,6 +9,7 @@
 #include <variant>
 
 #include "utils/channel.hpp"
+#include "utils/event_queue.hpp"
 
 namespace wpc {
 
@@ -29,7 +30,7 @@ struct RequestNotice {
 
 using Notification = std::variant<DesktopChangedNotice, SettingsChangedNotice, HardwareChangedNotice, RequestNotice>;
 using Notify = std::function<void(Notification)>;
-/// Where the notifications wait for the service loop.
-using Notifications = Channel<Notification>;
+/// Where the notifications wait for the service loop, which sleeps in the events' EventLoop.
+using Notifications = EventQueue<Notification>;
 
 }  // namespace wpc

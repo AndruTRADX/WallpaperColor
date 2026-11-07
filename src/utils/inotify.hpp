@@ -1,11 +1,11 @@
 // Linux inotify: the kernel tells us when files in watched folders are opened, written,
-// created or moved. Reading blocks until something happens, so a waiting thread uses no CPU.
+// created or moved. Its fd becomes readable when something happened, so the thread that waits
+// for it (in an EventLoop) uses no CPU meanwhile.
 
 #pragma once
 
 #include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,15 +34,15 @@ public:
     int add(const std::filesystem::path& dir, uint32_t mask);
     void remove(int watch);
 
-    /// Waits for the next events; nullopt once stop() was called. Throws wpc::Error.
-    std::optional<std::vector<FileEvent>> read_events();
+    /// Readable when there are events to read.
+    int fd() const { return fd_.get(); }
 
-    /// Ends the wait of read_events(), now and from now on. Any thread may call it.
-    void stop();
+    /// The events that happened (as many as one read gives), without waiting: none if there are
+    /// none yet. Throws wpc::Error.
+    std::vector<FileEvent> read_events();
 
 private:
     Fd fd_;
-    Fd stop_;  // an eventfd: readable once stop() was called
 };
 
 }  // namespace wpc
