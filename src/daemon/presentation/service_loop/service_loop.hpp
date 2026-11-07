@@ -17,8 +17,10 @@ namespace wpc {
 
 class ServiceLoop {
 public:
-    /// Quiet time that ends a burst of notifications.
-    static constexpr std::chrono::milliseconds SETTLE{800};
+    /// Quiet time that ends a burst of notifications. Plasma answers with the new slide as soon
+    /// as it opens it (measured: under 10 ms), so this only merges bursts; every check after
+    /// the first costs a D-Bus call and paints nothing when nothing changed.
+    static constexpr std::chrono::milliseconds SETTLE{300};
 
     /// Applies the settings. `settle`: how long a burst waits to be over (the tests use zero).
     ServiceLoop(ServiceParts parts, Notifications& notifications, DesktopChangedEvent& desktop_changed,

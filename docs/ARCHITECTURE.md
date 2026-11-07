@@ -450,7 +450,8 @@ calls `notify_` with a notice. Add the notice to `models/notifications.hpp`, its
 
 Every notification is only a **trigger**: the answer always comes from the desktop (step 1),
 so a false alarm costs one D-Bus call and changes nothing. A burst (Plasma rescanning a folder
-opens every file in it) is merged: the loop waits until 0.8 s pass with no new notification.
+opens every file in it) is merged: the loop waits until 0.3 s pass with no new notification.
+The lights start fading about 0.32 s after Plasma opens the next slide (measured).
 Requests are answered at once; one that waits more than 2 s (during a fade) gets "service busy".
 
 A fade sends 25 frames a second, blending each LED from what was sent last to its new colour,
