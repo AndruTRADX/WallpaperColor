@@ -472,7 +472,7 @@ The service runs on **one loop** (`utils/event_loop`, epoll) and one more thread
 - **The loop's thread** (`main`) waits in one `epoll_wait` for everything the events hear: the
   inotify fd (`file_watch`), the session bus (`plasma_shell`) and the system bus (`logind`),
   whose messages sd-bus reads and dispatches on this thread (no `enterEventLoopAsync`). The
-  retry and the 0.8 s of a burst are that wait's timeout. Every event's callback and every
+  retry and the 0.3 s of a burst are that wait's timeout. Every event's callback and every
   feature run here, one at a time: what they share needs no lock.
 - **The request socket's thread** accepts the terminal's connections and waits for the loop's
   answer. It is a thread of its own so a request still gets "service busy" after 2 s while the
