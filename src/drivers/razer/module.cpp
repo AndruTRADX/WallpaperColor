@@ -1,7 +1,7 @@
-// What wpc-driver-razer.so exports: its DriverInfo, with the real keyboard service wired in.
+// What wpc-driver-razer.so exports: its DriverInfo, with the real keyboard wired in.
 
-#include "drivers/razer/infrastructure/services/keyboard.hpp"
-#include "drivers/razer/presentation/driver.hpp"
+#include "drivers/razer/driver.hpp"
+#include "drivers/razer/keyboard.hpp"
 
 namespace {
 

@@ -19,6 +19,16 @@ rm -rf "$HOME/.local/lib/wallpapercolor/drivers"   # no module of an older build
 install -Dm755 -t "$HOME/.local/lib/wallpapercolor/drivers" build/src/drivers/wpc-driver-*.so
 install -Dm755 build/src/wpc-pictures.so "$HOME/.local/lib/wallpapercolor/wpc-pictures.so"
 install -Dm644 systemd/wallpapercolord.service "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/wallpapercolord.service"
+# The rest of the sandbox needs user namespaces in user services: tried first, installed only
+# where they work (systemd/wallpapercolord.service.d/sandbox.conf).
+dropins="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/wallpapercolord.service.d"
+if systemd-run --user --quiet --wait --collect -p PrivateUsers=yes -p ProtectSystem=strict \
+     -p ProtectHome=read-only -p PrivateTmp=yes "$(command -v true)" >/dev/null 2>&1; then
+  install -Dm644 systemd/wallpapercolord.service.d/sandbox.conf "$dropins/sandbox.conf"
+else
+  rm -f "$dropins/sandbox.conf"
+  echo "User services can't have user namespaces here: the service runs with the base sandbox only."
+fi
 systemctl --user daemon-reload
 
 if [[ "${1:-}" != --no-start ]]; then

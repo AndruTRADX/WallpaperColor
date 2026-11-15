@@ -1,7 +1,7 @@
 // One thread waiting for many things at once (Linux epoll): file descriptors becoming readable,
 // a time passing, or another thread waking it. The thread sleeps in the kernel until one of
-// them happens, then runs what that source asked for. Every callback runs on the thread that
-// calls run_once(), so what the callbacks share needs no lock.
+// them happens, then runs what that source asked for (the "reactor" pattern). Every callback
+// runs on the thread that calls run_once(), so what the callbacks share needs no lock.
 
 #pragma once
 
@@ -10,13 +10,14 @@
 #include <exception>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 
 #include <sys/epoll.h>
 #include <unistd.h>
 
 #include "utils/error.hpp"
-#include "utils/socket.hpp"
+#include "utils/fd.hpp"
 
 namespace wpc {
 
@@ -35,7 +36,8 @@ public:
     /// Calls `ready` (on the loop's thread) while `fd` has any of `events` (EPOLLIN, EPOLLOUT).
     /// The fd stays its owner's: remove() it before closing it. Throws wpc::Error.
     void add(int fd, uint32_t events, std::function<void()> ready, Prepare prepare = {});
-    /// Waits for other `events` on `fd` from now on. Throws wpc::Error.
+    /// Waits for other `events` on `fd` from now on (nothing to do if they are the same).
+    /// Throws wpc::Error.
     void change(int fd, uint32_t events);
     /// Stops waiting for `fd`; its callbacks are not called again, even in this turn.
     void remove(int fd);
@@ -51,8 +53,10 @@ public:
 private:
     struct Source {
         int fd;
-        std::function<void()> ready;
-        Prepare prepare;
+        uint32_t events;
+        // Shared, so a callback still runs to its end when it removes its own source.
+        std::shared_ptr<const std::function<void()>> ready;
+        std::shared_ptr<const Prepare> prepare;
     };
     std::optional<Duration> longest_sleep(std::optional<Duration> timeout);
 

@@ -1,8 +1,8 @@
 // wallpapercolor: the terminal program. Without a subcommand: the terminal UI.
 //
-// This file reads the command line, picks the implementations of the contracts (the "composition root") and hands them
-// to the command. Commands: presentation/cli; the terminal UI: presentation/tui; what they do:
-// application/features.
+// This file reads the command line, picks the implementation of each port (the "composition
+// root") and hands them to the command. Commands: cli/; the terminal UI: tui/; what they do:
+// app/; the ports' implementations: system/.
 
 #include <csignal>
 #include <cstdlib>
@@ -14,16 +14,15 @@
 
 #include <CLI/CLI.hpp>
 
-#include "shared/infrastructure/services/socket_path.hpp"
-#include "terminal/application/features/load_settings/load_settings.hpp"
-#include "terminal/infrastructure/external/driver_modules.hpp"
-#include "terminal/infrastructure/external/message_codec.hpp"
-#include "terminal/infrastructure/external/pictures.hpp"
-#include "terminal/infrastructure/external/settings_file.hpp"
-#include "terminal/infrastructure/services/service_socket.hpp"
-#include "terminal/infrastructure/services/settings_editor.hpp"
-#include "terminal/presentation/cli/commands.hpp"
-#include "terminal/presentation/tui/tui.hpp"
+#include "colours/colour.hpp"
+#include "drivers/host/driver_host.hpp"
+#include "pictures/picture_files.hpp"
+#include "protocol/socket_path.hpp"
+#include "terminal/app/settings.hpp"
+#include "terminal/cli/commands.hpp"
+#include "terminal/system/service_client.hpp"
+#include "terminal/system/settings_editor.hpp"
+#include "terminal/tui/tui.hpp"
 #include "utils/error.hpp"
 
 namespace fs = std::filesystem;
@@ -74,7 +73,7 @@ int main(int argc, char** argv) {
     CLI::App* set_cmd = app.add_subcommand("set", "Paint every chosen component with a colour, or three as an arc");
     SetArgs set_args;  // read below into ColoursToSet
     CLI::Validator colour_check(
-        [](std::string& text) { return Rgb::parse(text) ? std::string() : invalid_colour_message(text); },
+        [](std::string& text) { return parse_colour(text) ? std::string() : invalid_colour_message(text); },
         "COLOR");
     CLI::Option* colors_opt = set_cmd->add_option("colors", set_args.colors,
                                                   "Colour(s) as #rrggbb or rrggbb; up to three with --arc or --split")
@@ -116,14 +115,12 @@ int main(int argc, char** argv) {
 
     try {
         // The implementations the commands work with.
-        UnixServiceSocket service(SocketPath().path());
-        ProtocolJsonCodec codec;
-        HostDriverModules drivers;
-        PictureFilesAdapter pictures;
-        TomlSettingsFormat format;
-        TerminalParts parts{service, codec, drivers, pictures, format};
+        UnixServiceClient service(ipc::socket_path());
+        ModuleHost drivers(default_driver_folder());
+        PictureFiles pictures(default_decoders_module());
+        TerminalParts parts{service, drivers, pictures};
 
-        LoadedSettings settings = load_settings(format, config_option);
+        LoadedSettings settings = load_settings(config_option);
         const Config& config = settings.config;
         auto editor = [&] {
             if (!settings.path) throw Error("no config path: set HOME or XDG_CONFIG_HOME");
@@ -143,7 +140,7 @@ int main(int argc, char** argv) {
             if (set_args.split) mode = Mode::Split;
             return run_set(parts, config, ColoursToSet{set_args.colors, set_args.image, mode});
         }
-        if (*config_cmd) return run_config(parts, config);
+        if (*config_cmd) return run_config(config);
         if (*status_cmd) return run_status(parts);
         if (*pause_cmd) return run_request(parts, ipc::Request::Pause, "paused");
         if (*resume_cmd) return run_request(parts, ipc::Request::Resume, "resumed");
@@ -154,6 +151,10 @@ int main(int argc, char** argv) {
         return EXIT_SUCCESS;
     } catch (const Error& e) {
         std::cerr << "wallpapercolor: " << e.what() << "\n";
+        return EXIT_FAILURE;
+    } catch (const std::exception& e) {
+        // Not expected (a bug): said, instead of an abort with no message.
+        std::cerr << "wallpapercolor: unexpected error: " << e.what() << "\n";
         return EXIT_FAILURE;
     }
 }

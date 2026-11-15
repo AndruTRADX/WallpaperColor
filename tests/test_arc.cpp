@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "shared/domain/colours/gradient.hpp"
+#include "colours/colour.hpp"
 
 using namespace wpc;
 
@@ -23,20 +23,20 @@ TEST_CASE("closed gradient wraps without a jump") {
     CHECK(g[3] == G);
     CHECK(g[6] == B);
     // the last LED is between blue and red again (magenta side), not blue
-    float h = g[8].to_hsv().h;
+    float h = to_hsv(g[8]).h;
     CHECK(h >= 280.0f);
     CHECK(h < 340.0f);
 }
 
 TEST_CASE("mix takes the short way round and stays vivid") {
-    Hsv h = mix(Rgb{255, 0, 40}, Rgb{255, 40, 0}, 0.5f).to_hsv();  // across hue 0
+    Hsv h = to_hsv(mix(Rgb{255, 0, 40}, Rgb{255, 40, 0}, 0.5f));  // across hue 0
     CHECK((h.h < 10.0f || h.h > 350.0f));
-    Hsv blue_orange = mix(B, Rgb{255, 128, 0}, 0.5f).to_hsv();
+    Hsv blue_orange = to_hsv(mix(B, Rgb{255, 128, 0}, 0.5f));
     CHECK(blue_orange.s > 0.9f);  // no grey midpoint
 }
 
 TEST_CASE("white end keeps the other hue") {
-    Hsv m = mix(WHITE, B, 0.5f).to_hsv();
+    Hsv m = to_hsv(mix(WHITE, B, 0.5f));
     CHECK(m.h >= 235.0f);
     CHECK(m.h < 245.0f);
 }

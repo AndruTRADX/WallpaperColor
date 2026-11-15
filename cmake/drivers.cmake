@@ -4,13 +4,13 @@
 # programs look for it in the build folder). The programs never link it: they load it while
 # one of its components is chosen (src/drivers/host).
 #
-#   SOURCES    the driver's code; src/drivers/<name>/module.cpp (wpc_driver_info) is added
+#   SOURCES    the driver's code; module.cpp (wpc_driver_info) is added
 #   LIBRARIES  what only this driver needs, linked into it alone
 #
 # It also makes wpc_driver_<name>, a static library of the same code for the tests.
 #
 # The module is built so that it can be unloaded and exports one symbol:
-#   -fvisibility=hidden        only wpc_driver_info (marked visible in contracts/driver.hpp) is exported
+#   -fvisibility=hidden        only wpc_driver_info (marked visible in drivers/sdk/driver.hpp) is exported
 #   -fno-gnu-unique            GCC's "unique" symbols would stop glibc from ever unloading it
 #   --exclude-libs,ALL         code from static libraries (wpc_utils) stays private to it
 #   --no-undefined             a missing symbol is a build error, not a load error later
@@ -18,7 +18,7 @@ function(wpc_driver name)
   cmake_parse_arguments(ARG "" "" "SOURCES;LIBRARIES" ${ARGN})
 
   add_library(wpc_driver_${name} STATIC ${ARG_SOURCES})
-  target_link_libraries(wpc_driver_${name} PUBLIC wpc_drivers_sdk ${ARG_LIBRARIES})
+  target_link_libraries(wpc_driver_${name} PUBLIC wpc_sdk ${ARG_LIBRARIES})
   target_compile_options(wpc_driver_${name} PRIVATE -fno-gnu-unique)
   set_target_properties(wpc_driver_${name} PROPERTIES
     CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)

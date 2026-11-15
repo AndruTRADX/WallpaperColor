@@ -1,7 +1,7 @@
-// What wpc-driver-fusion2.so exports: its DriverInfo, with the real board service wired in.
+// What wpc-driver-fusion2.so exports: its DriverInfo, with the real board wired in.
 
-#include "drivers/fusion2/infrastructure/services/board.hpp"
-#include "drivers/fusion2/presentation/driver.hpp"
+#include "drivers/fusion2/board.hpp"
+#include "drivers/fusion2/driver.hpp"
 
 namespace {
 

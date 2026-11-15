@@ -10,10 +10,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "drivers/openrgb/domain/settings.hpp"
-#include "drivers/openrgb/domain/zones.hpp"
-#include "drivers/openrgb/infrastructure/services/client.hpp"
-#include "drivers/openrgb/presentation/driver.hpp"
+#include "drivers/openrgb/client.hpp"
+#include "drivers/openrgb/driver.hpp"
+#include "drivers/openrgb/protocol.hpp"
 #include "utils/error.hpp"
 
 using namespace wpc;

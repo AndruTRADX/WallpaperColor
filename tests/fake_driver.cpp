@@ -1,8 +1,11 @@
 // A driver module for the tests (wpc-driver-fake.so): one device whose zones come from its
 // settings. show() throws a wpc::Error describing the frame, so a test can see what arrived
-// and that exceptions cross from a module into the program.
+// and that exceptions cross from a module into the program. Its settings can make it fail:
+// `fail_create` (creating it throws wpc::Error) and `fail_other` (devices() throws an exception
+// of another type).
 
 #include <format>
+#include <stdexcept>
 
 #include "drivers/sdk/driver.hpp"
 
@@ -10,13 +13,16 @@ namespace {
 
 class FakeDriver final : public wpc::Driver {
 public:
-    explicit FakeDriver(const wpc::DriverSettings& settings) {
+    explicit FakeDriver(const wpc::DriverSettings& settings) : fail_other_(settings.boolean("fail_other").value_or(false)) {
         for (double leds : settings.numbers("zones").value_or(std::vector<double>{3})) {
             zones_.push_back(wpc::Zone{"Zone", static_cast<uint32_t>(leds), wpc::Component::Strip, wpc::Shape::Line});
         }
     }
 
-    std::vector<wpc::Device> devices() override { return {wpc::Device{"fake", "Fake device", zones_, {}}}; }
+    std::vector<wpc::Device> devices() override {
+        if (fail_other_) throw std::out_of_range("the fake driver's own error");
+        return {wpc::Device{"fake", "Fake device", zones_, {}}};
+    }
 
     void show(size_t device, std::span<const wpc::ZoneFrame> zones) override {
         std::string seen = std::format("device {}:", device);
@@ -25,6 +31,7 @@ public:
     }
 
 private:
+    bool fail_other_;
     std::vector<wpc::Zone> zones_;
 };
 
@@ -40,7 +47,10 @@ const wpc::DriverInfo INFO = {
 #endif
     .config_table = "fake",
     .components = COMPONENTS,
-    .create = [](const wpc::DriverSettings& s) -> std::unique_ptr<wpc::Driver> { return std::make_unique<FakeDriver>(s); },
+    .create = [](const wpc::DriverSettings& s) -> std::unique_ptr<wpc::Driver> {
+        if (s.boolean("fail_create").value_or(false)) throw wpc::Error("the fake driver refused its settings");
+        return std::make_unique<FakeDriver>(s);
+    },
 };
 
 }  // namespace

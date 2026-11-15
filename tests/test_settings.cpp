@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "shared/infrastructure/services/settings_file.hpp"
-#include "terminal/infrastructure/services/settings_editor.hpp"
+#include "settings/settings_file.hpp"
+#include "terminal/system/settings_editor.hpp"
 
 using namespace wpc;
 
@@ -9,7 +9,7 @@ namespace {
 
 /// The settings the editor's text gives.
 Config config_of(const TomlSettingsEditor& editor) {
-    return SettingsFile().parse(editor.text());
+    return parse_settings(editor.text());
 }
 
 const char* const USER =

@@ -3,12 +3,8 @@
 
 #include <doctest/doctest.h>
 
-#include "drivers/razer/application/features/list_devices/list_devices.hpp"
-#include "drivers/razer/application/features/show_frame/show_frame.hpp"
-#include "drivers/razer/domain/settings.hpp"
-#include "drivers/razer/domain/zones.hpp"
-#include "drivers/razer/infrastructure/services/keyboard.hpp"
-#include "drivers/razer/presentation/driver.hpp"
+#include "drivers/razer/driver.hpp"
+#include "drivers/razer/protocol.hpp"
 #include "utils/error.hpp"
 
 using namespace wpc;
@@ -62,7 +58,7 @@ TEST_CASE("the colours run across or down the keys") {
 TEST_CASE("Razer reports, byte by byte") {
     // Row 1, every key red.
     std::vector<Rgb> red(razer::COLUMNS, Rgb{255, 0, 0});
-    razer::HidKeyboard::Report row = razer::HidKeyboard::row_report(1, red);
+    razer::Report row = razer::row_report(1, red);
     CHECK(row[0] == 0x00);   // report id
     CHECK(row[2] == 0x3F);   // transaction id
     CHECK(row[6] == 0x47);   // data size
@@ -78,8 +74,8 @@ TEST_CASE("Razer reports, byte by byte") {
     CHECK(row[14 + 15 * 3] == 0);    // nothing after it
     CHECK(row[89] == 0xBB);  // 0x47 ^ 0x0F ^ 0x03 ^ 1 ^ 14 ^ 255 (15 times)
 
-    razer::HidKeyboard::Report show = razer::HidKeyboard::show_report();
-    razer::HidKeyboard::Report expected{};
+    razer::Report show = razer::show_report();
+    razer::Report expected{};
     expected[2] = 0x3F;
     expected[6] = 0x0C;
     expected[7] = 0x0F;
@@ -116,40 +112,49 @@ struct FakeKeyboard final : razer::RazerKeyboard {
     void show() override { ++shows; }
 };
 
+/// The driver with a fake keyboard, and the fake to steer it.
+struct Keyboard {
+    FakeKeyboard* fake;
+    razer::KeyboardDriver driver;
+    Keyboard() : Keyboard(std::make_unique<FakeKeyboard>()) {}
+
+private:
+    explicit Keyboard(std::unique_ptr<FakeKeyboard> k) : fake(k.get()), driver({}, std::move(k)) {}
+};
+
 }  // namespace
 
 TEST_CASE("the keyboard is opened when needed, absent is no device, and a failure closes it") {
-    FakeKeyboard keyboard;
-    razer::KeyboardState state;
+    Keyboard k;
+    FakeKeyboard& keyboard = *k.fake;
 
     keyboard.present = false;
-    CHECK(razer::list_devices(keyboard, state).empty());
+    CHECK(k.driver.devices().empty());
 
     keyboard.present = true;
-    REQUIRE(razer::list_devices(keyboard, state).size() == 1);
-    razer::list_devices(keyboard, state);
+    REQUIRE(k.driver.devices().size() == 1);
+    k.driver.devices();
     CHECK(keyboard.opens == 2);  // kept open
 
     std::vector<Rgb> red = {Rgb{255, 0, 0}};
     ZoneFrame keys{0, red};
-    razer::show_frame(keyboard, state, std::span(&keys, 1));
+    k.driver.show(0, std::span(&keys, 1));
     CHECK(keyboard.rows == static_cast<int>(razer::ROWS));
     CHECK(keyboard.shows == 1);
 
     keyboard.fail = true;
-    CHECK_THROWS_AS(razer::show_frame(keyboard, state, std::span(&keys, 1)), Error);
-    CHECK_FALSE(keyboard.is_open());  // opened again by the next list_devices()
-    CHECK_THROWS_WITH(razer::show_frame(keyboard, state, std::span(&keys, 1)), "Razer keyboard: not open");
+    CHECK_THROWS_AS(k.driver.show(0, std::span(&keys, 1)), Error);
+    CHECK_FALSE(keyboard.is_open());  // opened again by the next devices()
+    CHECK_THROWS_WITH(k.driver.show(0, std::span(&keys, 1)), "Razer keyboard: not open");
 }
 
 TEST_CASE("a keyboard plugged in again is opened again before painting, not failed on") {
-    FakeKeyboard keyboard;
-    razer::KeyboardState state;
-    REQUIRE(razer::list_devices(keyboard, state).size() == 1);
+    Keyboard k;
+    REQUIRE(k.driver.devices().size() == 1);
 
-    keyboard.connected = false;  // unplugged and plugged in again: the open one is gone
-    REQUIRE(razer::list_devices(keyboard, state).size() == 1);
-    CHECK(keyboard.opens == 2);
-    razer::list_devices(keyboard, state);
-    CHECK(keyboard.opens == 2);  // the new one is kept
+    k.fake->connected = false;  // unplugged and plugged in again: the open one is gone
+    REQUIRE(k.driver.devices().size() == 1);
+    CHECK(k.fake->opens == 2);
+    k.driver.devices();
+    CHECK(k.fake->opens == 2);  // the new one is kept
 }

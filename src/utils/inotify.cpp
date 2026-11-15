@@ -34,8 +34,11 @@ std::vector<FileEvent> Inotify::read_events() {
 
     std::vector<FileEvent> events;
     for (ssize_t pos = 0; pos < length;) {
-        inotify_event header;
+        // Each event: a header, then its name of `len` bytes; never read past what was read.
+        if (static_cast<size_t>(length - pos) < sizeof(inotify_event)) break;
+        inotify_event header{};
         std::memcpy(&header, buffer + pos, sizeof header);
+        if (static_cast<size_t>(length - pos) - sizeof header < header.len) break;
         const char* name = buffer + pos + sizeof header;
         // the name is NUL-padded to `len` bytes
         std::string text = header.len > 0 ? std::string(name, strnlen(name, header.len)) : "";

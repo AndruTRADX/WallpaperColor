@@ -1,5 +1,7 @@
-// What WallpaperColor paints, in its own words: components (fans, pump, RAM…), and the
-// devices and zones a driver finds. Plain values, no I/O.
+// What WallpaperColor paints, in its own words: colours, components (fans, pump, RAM…), and
+// the devices and zones a driver finds. Plain values with no code to link: these types cross
+// between the programs and the driver modules, so they are part of the modules' ABI (their
+// text is in the build id, see CMakeLists.txt). The maths on colours is in colours/colour.hpp.
 
 #pragma once
 
@@ -10,9 +12,17 @@
 #include <string_view>
 #include <vector>
 
-#include "shared/domain/colours/color.hpp"
-
 namespace wpc {
+
+/// An 8-bit red, green, blue colour.
+struct Rgb {
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    bool operator==(const Rgb&) const = default;
+};
+
+inline constexpr Rgb WHITE{255, 255, 255};
 
 /// What the user turns on or off. New values go at the end.
 enum class Component : uint8_t { Fans, Pump, Ram, Motherboard, Argb, Keyboard, Gpu, Strip, Other };

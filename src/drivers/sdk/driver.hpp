@@ -1,11 +1,16 @@
 // The driver SDK: what a driver module is written against. Every module implements Driver and
-// exports wpc_driver_info(); the programs only ever see this interface.
+// exports wpc_driver_info(); the programs only ever see this interface (the port of the
+// "hardware" side, see docs/ARCHITECTURE.md).
 //
 // A driver is built into its own file, wpc-driver-<name>.so, and the programs load it with
 // drivers/host only while one of its components is chosen. How to write one:
 // docs/ADDING-A-MODULE.md.
 //
-// Header-only, so a module needs nothing from the programs to use it.
+// Header-only, so a module needs nothing from the programs to use it. Across the boundary go
+// plain values only (strings, vectors, spans of colours). A module's exceptions are caught by
+// the host as they leave the module and thrown again from the program's code, because the
+// module may be unloaded before the error is read (its code, and so the exception's vtable,
+// would be gone).
 
 #pragma once
 
@@ -49,7 +54,8 @@ struct DriverOption {
     const char* hint;   // what it changes, in a few words
 };
 
-/// What a module tells the programs about its driver.
+/// What a module tells the programs about its driver. `built_for` stays the first member: it is
+/// read before anything else, to refuse a module of another build whose layout may differ.
 struct DriverInfo {
     /// WPC_BUILD_ID of the build the module comes from. The programs refuse any other: a
     /// module and the programs must come from the same build (see drivers/host).

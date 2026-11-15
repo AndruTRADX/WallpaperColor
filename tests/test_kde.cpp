@@ -4,8 +4,7 @@
 
 #include <unistd.h>
 
-#include "daemon/infrastructure/services/colour_scheme.hpp"
-#include "daemon/infrastructure/services/wallpaper_packages.hpp"
+#include "daemon/kde/wallpaper.hpp"
 #include "utils/url.hpp"
 
 using namespace wpc;
@@ -24,10 +23,10 @@ TEST_CASE("urls") {
 }
 
 TEST_CASE("scheme brightness") {
-    CHECK(KdeColourScheme::is_dark_text("[General]\nX=1\n[Colors:Window]\nBackgroundNormal=24,24,27\n"));
-    CHECK_FALSE(KdeColourScheme::is_dark_text("[Colors:Window]\nBackgroundNormal=239,240,241\n"));
-    CHECK_FALSE(KdeColourScheme::is_dark_text("[Colors:View]\nBackgroundNormal=0,0,0\n"));
-    CHECK_FALSE(KdeColourScheme::is_dark_text(""));
+    CHECK(kde::is_dark_scheme("[General]\nX=1\n[Colors:Window]\nBackgroundNormal=24,24,27\n"));
+    CHECK_FALSE(kde::is_dark_scheme("[Colors:Window]\nBackgroundNormal=239,240,241\n"));
+    CHECK_FALSE(kde::is_dark_scheme("[Colors:View]\nBackgroundNormal=0,0,0\n"));
+    CHECK_FALSE(kde::is_dark_scheme(""));
 }
 
 TEST_CASE("package resolution") {
@@ -38,10 +37,10 @@ TEST_CASE("package resolution") {
         fs::create_directories(d);
         std::ofstream(d / f.name) << std::string(f.size, '\0');
     }
-    CHECK(PlasmaPackages().picture(dir, false)->filename() == "big.jpg");
-    CHECK(PlasmaPackages().picture(dir, true)->filename() == "dark.jpg");
+    CHECK(kde::package_picture(dir, false)->filename() == "big.jpg");
+    CHECK(kde::package_picture(dir, true)->filename() == "dark.jpg");
     fs::path file = dir / "contents/images/big.jpg";
-    CHECK(PlasmaPackages().picture(file, true) == file);
-    CHECK_FALSE(PlasmaPackages().picture(dir / "missing", false));
+    CHECK(kde::package_picture(file, true) == file);
+    CHECK_FALSE(kde::package_picture(dir / "missing", false));
     fs::remove_all(dir);
 }

@@ -7,8 +7,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb/stb_image_write.h>
 
-#include "shared/domain/colours/extract.hpp"
-#include "shared/infrastructure/services/picture_files.hpp"
+#include "colours/extract.hpp"
+#include "support.hpp"
 
 using namespace wpc;
 
@@ -45,14 +45,14 @@ bool between(float v, float lo, float hi) {
 TEST_CASE("solid colour is kept and brightened") {
     Extraction e = run(solid(200, 20, 20));
     CHECK(e.picked == Rgb{200, 20, 20});
-    Hsv hsv = e.led.to_hsv();
+    Hsv hsv = to_hsv(e.led);
     CHECK((hsv.h < 2.0f || hsv.h > 358.0f));  // still red
     CHECK(hsv.v == 1.0f);
 }
 
 TEST_CASE("pastel is saturated") {
     Extraction e = run(solid(180, 200, 255));
-    CHECK(e.led.to_hsv().s >= float(ExtractConfig{}.min_saturation) - 0.01f);
+    CHECK(to_hsv(e.led).s >= float(ExtractConfig{}.min_saturation) - 0.01f);
 }
 
 TEST_CASE("grey picture gives white") {
@@ -86,7 +86,7 @@ TEST_CASE("navy background beats pink hair") {
         if (x < 75) return std::array<uint8_t, 3>{138, 98, 101};
         return std::array<uint8_t, 3>{21, 21, 30};
     }));
-    CHECK(between(e.led.to_hsv().h, 220.0f, 260.0f));
+    CHECK(between(to_hsv(e.led).h, 220.0f, 260.0f));
 }
 
 TEST_CASE("skin loses to a smaller real colour") {
@@ -96,7 +96,7 @@ TEST_CASE("skin loses to a smaller real colour") {
         if (x < 150) return std::array<uint8_t, 3>{60, 90, 200};
         return std::array<uint8_t, 3>{30, 30, 35};
     }));
-    CHECK(between(e.led.to_hsv().h, 215.0f, 240.0f));
+    CHECK(between(to_hsv(e.led).h, 215.0f, 240.0f));
 }
 
 TEST_CASE("skin only picture still gets a colour") {
@@ -106,14 +106,14 @@ TEST_CASE("skin only picture still gets a colour") {
 TEST_CASE("light pastel stays pastel") {
     // pale peach (12 % saturation, bright): soft peach, not orange
     Extraction e = run(solid(226, 207, 200));
-    CHECK(between(e.led.to_hsv().s, 0.25f, 0.4f));
-    for (Rgb c : e.arc) CHECK(c.to_hsv().v >= 0.69f);  // no deep shade
+    CHECK(between(to_hsv(e.led).s, 0.25f, 0.4f));
+    for (Rgb c : e.arc) CHECK(to_hsv(c).v >= 0.69f);  // no deep shade
 }
 
 TEST_CASE("dark muted colour is still boosted") {
     // shaded rose (pink hair in shadow): raised to the saturation floor
     Extraction e = run(solid(95, 53, 54));
-    CHECK(e.led.to_hsv().s >= float(ExtractConfig{}.min_saturation) - 0.01f);
+    CHECK(to_hsv(e.led).s >= float(ExtractConfig{}.min_saturation) - 0.01f);
 }
 
 TEST_CASE("small purple accent beats large dull background") {
@@ -125,7 +125,7 @@ TEST_CASE("small purple accent beats large dull background") {
         return std::array<uint8_t, 3>{34, 37, 39};
     }));
     bool purple = false;
-    for (Rgb c : e.arc) purple = purple || between(c.to_hsv().h, 270.0f, 310.0f);
+    for (Rgb c : e.arc) purple = purple || between(to_hsv(c).h, 270.0f, 310.0f);
     CHECK(purple);
 }
 
@@ -140,7 +140,7 @@ TEST_CASE("tinted near black is grey") {
 }
 
 TEST_CASE("dark but vivid colour counts") {
-    CHECK(between(run(solid(3, 19, 105)).led.to_hsv().h, 225.0f, 240.0f));
+    CHECK(between(to_hsv(run(solid(3, 19, 105)).led).h, 225.0f, 240.0f));
 }
 
 TEST_CASE("vivid minority beats grey majority") {
@@ -149,7 +149,7 @@ TEST_CASE("vivid minority beats grey majority") {
         if (x < 160) return std::array<uint8_t, 3>{120, 120, 125};
         return std::array<uint8_t, 3>{20, 60, 230};
     }));
-    CHECK(between(e.led.to_hsv().h, 200.0f, 250.0f));
+    CHECK(between(to_hsv(e.led).h, 200.0f, 250.0f));
 }
 
 TEST_CASE("palette shares sum to one") {
@@ -171,7 +171,7 @@ TEST_CASE("format comes from content not extension") {
     std::vector<uint8_t> blue;
     for (int i = 0; i < 16; ++i) blue.insert(blue.end(), {0, 0, 255});
     REQUIRE(stbi_write_png(path.c_str(), 4, 4, 3, blue.data(), 4 * 3));
-    Extraction e = extract(PictureFiles().read(path, picture_side(ExtractConfig{})), ExtractConfig{});
+    Extraction e = extract(test::read_picture(path, picture_side(ExtractConfig{})), ExtractConfig{});
     std::filesystem::remove_all(dir);
     CHECK(e.led == Rgb{0, 0, 255});
 }
@@ -187,16 +187,16 @@ TEST_CASE("arc takes three distinct hues") {
     CHECK(e.arc[0] == e.led);
     for (int i = 0; i < 3; ++i) {
         for (int j = i + 1; j < 3; ++j) {
-            CHECK(hue_distance(e.arc[i].to_hsv().h, e.arc[j].to_hsv().h) >= ARC_MIN_HUE_GAP);
+            CHECK(hue_distance(to_hsv(e.arc[i]).h, to_hsv(e.arc[j]).h) >= ARC_MIN_HUE_GAP);
         }
     }
 }
 
 TEST_CASE("single colour picture gets shades in the arc") {
     Extraction e = run(solid(30, 60, 220));
-    Hsv a = e.arc[0].to_hsv();
-    Hsv b = e.arc[1].to_hsv();
-    Hsv c = e.arc[2].to_hsv();
+    Hsv a = to_hsv(e.arc[0]);
+    Hsv b = to_hsv(e.arc[1]);
+    Hsv c = to_hsv(e.arc[2]);
     CHECK(hue_distance(a.h, b.h) < 5.0f);
     CHECK(hue_distance(a.h, c.h) < 5.0f);
     CHECK(b.s < a.s);  // lighter shade

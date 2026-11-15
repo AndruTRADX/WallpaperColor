@@ -150,6 +150,30 @@ elseif(NOT WPC_SANITIZE STREQUAL "")
 endif()
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)   # link-time optimisation: smaller, faster
 
+# Hardening of this project's code (the libraries downloaded above keep their own flags):
+# - _GLIBCXX_ASSERTIONS: the standard containers check their bounds (vector[i], span[i], the
+#   value of an empty optional…): such a bug stops the program with a message, instead of
+#   reading or writing the wrong memory;
+# - _FORTIFY_SOURCE=3: glibc checks the buffers given to memcpy, read, snprintf… against their
+#   size (it needs optimisation; the sanitizers check the same and more);
+# - stack clash and control-flow protection, where the compiler has them;
+# - full RELRO: every symbol is resolved when the program loads, then the tables written for
+#   them become read-only, so a stray write can't redirect a call.
+add_compile_definitions(_GLIBCXX_ASSERTIONS)
+if(WPC_SANITIZE STREQUAL "")
+  add_compile_options($<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE> $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=3>)
+endif()
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-fstack-clash-protection WPC_HAVE_STACK_CLASH_PROTECTION)
+check_cxx_compiler_flag(-fcf-protection WPC_HAVE_CF_PROTECTION)
+if(WPC_HAVE_STACK_CLASH_PROTECTION)
+  add_compile_options(-fstack-clash-protection)
+endif()
+if(WPC_HAVE_CF_PROTECTION)
+  add_compile_options(-fcf-protection)
+endif()
+add_link_options(-Wl,-z,relro,-z,now)
+
 # Version for --version and the IPC status, from project() above.
 add_compile_definitions(WPC_VERSION="${PROJECT_VERSION}")
 
@@ -157,8 +181,8 @@ add_compile_definitions(WPC_VERSION="${PROJECT_VERSION}")
 # programs refuse any other. It changes with the version, the compiler and the headers modules
 # and programs share, so a stale module is refused instead of crashing.
 set(WPC_DRIVER_API_FILES
-  src/drivers/sdk/driver.hpp src/drivers/sdk/hardware.hpp src/drivers/sdk/driver_settings.hpp src/shared/domain/colours/color.hpp
-  src/utils/picture_decoding.hpp)
+  src/drivers/sdk/driver.hpp src/drivers/sdk/hardware.hpp src/drivers/sdk/driver_settings.hpp src/utils/error.hpp
+  src/pictures/decoders.hpp)
 set(WPC_DRIVER_API_TEXT "")
 foreach(f ${WPC_DRIVER_API_FILES})
   file(READ "${PROJECT_SOURCE_DIR}/${f}" text)

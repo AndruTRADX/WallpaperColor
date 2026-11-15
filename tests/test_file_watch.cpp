@@ -8,7 +8,11 @@
 #include <fstream>
 #include <thread>
 
-#include "daemon/infrastructure/services/file_watch.hpp"
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "daemon/system/file_watch.hpp"
+#include "utils/error.hpp"
 #include "utils/event_queue.hpp"
 
 using namespace wpc;
@@ -112,4 +116,22 @@ TEST_CASE("file watch: changes are heard on the thread that runs the loop, with 
     CHECK_FALSE(heard_on);  // nothing runs until the loop does
     loop.run_once(std::chrono::seconds(2));
     CHECK(heard_on == std::this_thread::get_id());
+}
+
+TEST_CASE("file watch: a tree that can't be watched whole is not watched at all") {
+    if (::geteuid() == 0) return;  // root may read any folder
+    TempFolder temp;
+    fs::path slides = temp.path / "slides";
+    fs::create_directories(slides / "locked");
+    ::chmod((slides / "locked").c_str(), 0);  // inotify needs to read a folder to watch it
+
+    EventLoop loop;
+    Heard heard(loop);
+    InotifyFileWatch files(loop);
+    CHECK_THROWS_AS(files.watch_tree(slides, FILE_CREATED, heard.callback()), Error);
+    ::chmod((slides / "locked").c_str(), 0700);
+
+    // Nothing of that half-made watch is left: it would hear every change once more each retry.
+    std::ofstream(slides / "red.png") << "x";
+    CHECK_FALSE(heard.wait_for([](const FileChange&) { return true; }, std::chrono::milliseconds(200)));
 }

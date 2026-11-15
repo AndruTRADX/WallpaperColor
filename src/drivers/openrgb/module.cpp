@@ -1,8 +1,8 @@
 // What wpc-driver-openrgb.so exports, and the module's wiring: the driver gets the real
 // OpenRGB client.
 
-#include "drivers/openrgb/infrastructure/services/client.hpp"
-#include "drivers/openrgb/presentation/driver.hpp"
+#include "drivers/openrgb/client.hpp"
+#include "drivers/openrgb/driver.hpp"
 
 namespace {
 

@@ -9,13 +9,13 @@
 #include <span>
 #include <string_view>
 
-#include "utils/socket.hpp"
+#include "utils/fd.hpp"
 
 namespace wpc::hidraw {
 
 struct UsbId {
-    uint16_t vendor;
-    uint16_t product;
+    uint16_t vendor = 0;
+    uint16_t product = 0;
     /// The USB interface to use, for devices with several (a keyboard has one for its keys and
     /// another for its lights); -1: any.
     int interface = -1;

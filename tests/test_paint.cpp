@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "shared/domain/colours/paint.hpp"
+#include "colours/paint.hpp"
 
 using namespace wpc;
 

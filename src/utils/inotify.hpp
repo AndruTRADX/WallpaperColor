@@ -11,7 +11,7 @@
 
 #include <sys/inotify.h>
 
-#include "utils/socket.hpp"
+#include "utils/fd.hpp"
 
 namespace wpc {
 

@@ -30,6 +30,7 @@ for module in "$stage"/drivers/*.so "$stage/wpc-pictures.so"; do
   fi
 done
 install -m644 systemd/wallpapercolord.service "$stage/"
+install -Dm644 -t "$stage/wallpapercolord.service.d" systemd/wallpapercolord.service.d/sandbox.conf
 install -m644 udev/70-wallpapercolor.rules "$stage/"
 install -m755 packaging/install.sh "$stage/install.sh"
 install -m644 README.md "$stage/"

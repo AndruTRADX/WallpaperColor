@@ -1,19 +1,14 @@
-// The terminal's features, with fakes for the service's socket and the driver modules.
+// The terminal's use cases, with fakes for the service's socket and the driver modules.
 
 #include <doctest/doctest.h>
 
 #include <format>
 
-#include "terminal/application/features/choose_components/choose_components.hpp"
-#include "terminal/application/features/driver_options/driver_options.hpp"
-#include "terminal/application/features/list_devices/list_devices.hpp"
-#include "terminal/application/features/preview_devices/preview_devices.hpp"
-#include "terminal/application/features/save_settings/save_settings.hpp"
-#include "terminal/application/features/service_status/service_status.hpp"
-#include "terminal/application/features/set_colours/set_colours.hpp"
-#include "shared/infrastructure/services/protocol_json.hpp"
-#include "terminal/infrastructure/external/message_codec.hpp"
-#include "terminal/infrastructure/external/settings_file.hpp"
+#include "colours/colour.hpp"
+#include "protocol/json.hpp"
+#include "terminal/app/hardware.hpp"
+#include "terminal/app/service.hpp"
+#include "terminal/app/settings.hpp"
 #include "utils/error.hpp"
 
 using namespace wpc;
@@ -21,37 +16,39 @@ using namespace wpc;
 namespace {
 
 /// A strip driver and a board driver; the board isn't there.
-struct FakeDrivers final : DriverModules {
+struct FakeDrivers final : DriverHost {
     std::vector<std::string> in_memory;
     std::vector<std::string> shown;
 
     std::vector<DriverModule> installed(std::vector<std::string>&) override {
         return {DriverModule{"strip", "strip", {Component::Strip}}, DriverModule{"board", "board", {Component::Motherboard}}};
     }
-    void load(const std::string& name, const DriverSettings&) override {
+    std::vector<std::string> load(const std::string& name, const DriverSettings&) override {
         if (name == "board") throw Error("no board");
         in_memory.push_back(name);
+        return {};
     }
     void unload(const std::string& name) override { std::erase(in_memory, name); }
     std::vector<Device> devices(const std::string&) override {
         return {Device{"s", "Strip", {Zone{"Top", 3, Component::Strip, Shape::Line}, Zone{"Fan", 4, Component::Fans, Shape::Ring}}, {}}};
     }
     void show(const std::string& name, size_t, std::span<const ZoneFrame> zones) override {
-        for (const ZoneFrame& z : zones) shown.push_back(std::format("{} zone {} {}", name, z.zone, z.colours[0].hex()));
+        for (const ZoneFrame& z : zones) shown.push_back(std::format("{} zone {} {}", name, z.zone, to_hex(z.colours[0])));
     }
     std::string location() override { return "/fake"; }
 };
 
-struct NoPictures final : Pictures {
+struct NoPictures final : PictureReader {
     Picture read(const std::filesystem::path&, uint32_t) override { throw Error("no pictures here"); }
+    std::optional<int64_t> modified_time(const std::filesystem::path&) override { return std::nullopt; }
 };
 
 /// Answers every request with a status.
-struct FakeService final : ServiceSocket {
+struct FakeService final : ServiceClient {
     std::string exchange(const std::string&) override {
         ipc::Status s;
         s.stops = {"#ff0000", "not a colour", "#0000ff"};
-        return ProtocolJson().encode(ipc::Response::of(s));
+        return ipc::encode(ipc::Response::of(s));
     }
 };
 
@@ -88,8 +85,7 @@ TEST_CASE("set paints only the chosen zones and says what wasn't painted") {
 
 TEST_CASE("status gives the colours as colours") {
     FakeService service;
-    ProtocolJsonCodec codec;
-    ServiceStatus s = service_status(service, codec);
+    ServiceStatus s = service_status(service);
     CHECK(s.stops == std::vector<Rgb>{Rgb{255, 0, 0}, Rgb{0, 0, 255}});
 }
 
@@ -140,12 +136,11 @@ struct TextEditor final : SettingsEditor {
 }  // namespace
 
 TEST_CASE("saving says when the colours must be taken from the picture again") {
-    TomlSettingsFormat format;
     TextEditor editor;
     editor.body = "[led]\nfade = 1.0\n";
-    CHECK_FALSE(save_settings(editor, format, Config{}).extract_changed);  // only the fade changed
+    CHECK_FALSE(save_settings(editor, Config{}).extract_changed);  // only the fade changed
     editor.body = "[extract]\nmin_saturation = 0.3\n";
-    CHECK(save_settings(editor, format, Config{}).extract_changed);
+    CHECK(save_settings(editor, Config{}).extract_changed);
 }
 
 TEST_CASE("the drivers' settings: their values, the default, and the next choice") {
@@ -170,4 +165,11 @@ TEST_CASE("the drivers' settings: their values, the default, and the next choice
     CHECK(cycle_driver_option(editor, options[0], 1));
     CHECK(editor.strings == std::vector<std::string>{"[keyboard] direction = across", "[keyboard] direction = across",
                                                      "[keyboard] direction = across"});
+}
+
+TEST_CASE("a step on a calibration or a setting that isn't there changes nothing") {
+    TextEditor editor;
+    CHECK(step_gain(editor, 7, 0, 1));    // no calibration 7: no exception, nothing written
+    CHECK(step_gain(editor, 0, 5, 1));
+    CHECK(step_number(editor, 99, 1));
 }

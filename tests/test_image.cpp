@@ -5,14 +5,16 @@
 #include <fstream>
 #include <functional>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <iterator>
 
 #include <png.h>
 #include <stb/stb_image_write.h>  // implemented in test_extract.cpp
 
-#include "shared/domain/colours/picture.hpp"
-#include "shared/infrastructure/services/picture_files.hpp"
+#include "colours/picture.hpp"
+#include "support.hpp"
 #include "utils/error.hpp"
-#include "utils/picture_decoding.hpp"
+#include "pictures/decoders.hpp"
 
 using namespace wpc;
 using namespace std::literals;
@@ -104,11 +106,11 @@ TEST_CASE("big PNG is shrunk while it is read") {
     std::vector<uint8_t> data = pixels(800, 400, [](uint32_t x, uint32_t) { return halves(x, 800); });
     REQUIRE(stbi_write_png(path.c_str(), 800, 400, 3, data.data(), 800 * 3));
 
-    Picture full = PictureFiles().read(path);
+    Picture full = test::read_picture(path);
     CHECK(full.width == 800);
     CHECK(full.height == 400);
 
-    Picture small = PictureFiles().read(path, 100);  // factor 4
+    Picture small = test::read_picture(path, 100);  // factor 4
     CHECK(small.width == 200);
     CHECK(small.height == 100);
     CHECK(at(small, 0, 0) == Rgb8{255, 0, 0});
@@ -123,7 +125,7 @@ TEST_CASE("blocks cut short at the edges average what they have") {
         pixels(5, 3, [](uint32_t x, uint32_t) { return x == 4 ? Rgb8{255, 255, 255} : Rgb8{0, 0, 0}; });
     REQUIRE(stbi_write_png(path.c_str(), 5, 3, 3, data.data(), 5 * 3));
 
-    Picture small = PictureFiles().read(path, 1);  // factor 3: 2 × 1 blocks of 3 × 3 and 2 × 3 pixels
+    Picture small = test::read_picture(path, 1);  // factor 3: 2 × 1 blocks of 3 × 3 and 2 × 3 pixels
     REQUIRE(small.width == 2);
     REQUIRE(small.height == 1);
     CHECK(at(small, 0, 0) == Rgb8{0, 0, 0});
@@ -135,12 +137,12 @@ TEST_CASE("PNG grey and alpha become plain RGB") {
     fs::path grey = dir / "grey.png";
     uint8_t g[4] = {10, 10, 10, 10};
     REQUIRE(stbi_write_png(grey.c_str(), 2, 2, 1, g, 2));
-    CHECK(at(PictureFiles().read(grey), 1, 1) == Rgb8{10, 10, 10});
+    CHECK(at(test::read_picture(grey), 1, 1) == Rgb8{10, 10, 10});
 
     fs::path alpha = dir / "alpha.png";
     uint8_t a[16] = {1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0};  // fully transparent
     REQUIRE(stbi_write_png(alpha.c_str(), 2, 2, 4, a, 8));
-    CHECK(at(PictureFiles().read(alpha), 0, 0) == Rgb8{1, 2, 3});  // alpha is ignored, not blended
+    CHECK(at(test::read_picture(alpha), 0, 0) == Rgb8{1, 2, 3});  // alpha is ignored, not blended
 }
 
 TEST_CASE("16-bit PNG stays 16-bit, plain and interlaced") {
@@ -150,7 +152,7 @@ TEST_CASE("16-bit PNG stays 16-bit, plain and interlaced") {
         write_png16(path, 64, 32, interlaced, [](uint32_t x, uint32_t) {
             return x < 32 ? std::array<uint16_t, 3>{65535, 0, 1000} : std::array<uint16_t, 3>{0, 40000, 0};
         });
-        Picture image = PictureFiles().read(path, 8);  // factor 4
+        Picture image = test::read_picture(path, 8);  // factor 4
         CHECK(image.is_16_bit());
         CHECK(image.width == 16);
         CHECK(image.height == 8);
@@ -166,13 +168,13 @@ TEST_CASE("big JPEG is decoded at a fraction of its size") {
     std::vector<uint8_t> data = pixels(800, 400, [](uint32_t x, uint32_t) { return halves(x, 800); });
     REQUIRE(stbi_write_jpg(path.c_str(), 800, 400, 3, data.data(), 95));
 
-    Picture small = PictureFiles().read(path, 100);  // factor 4: libjpeg decodes at 1/4
+    Picture small = test::read_picture(path, 100);  // factor 4: libjpeg decodes at 1/4
     CHECK(small.width == 200);
     CHECK(small.height == 100);
     CHECK(near(at(small, 10, 50), {255, 0, 0}, 12));   // JPEG is lossy
     CHECK(near(at(small, 190, 50), {0, 0, 255}, 12));
 
-    Picture tiny = PictureFiles().read(path, 10);  // factor 40: 1/8 is as far as libjpeg goes
+    Picture tiny = test::read_picture(path, 10);  // factor 40: 1/8 is as far as libjpeg goes
     CHECK(tiny.width == 100);
 }
 
@@ -181,7 +183,7 @@ TEST_CASE("BMP still loads") {
     fs::path path = dir / "green.bmp";
     std::vector<uint8_t> data = pixels(4, 4, [](uint32_t, uint32_t) { return Rgb8{0, 200, 0}; });
     REQUIRE(stbi_write_bmp(path.c_str(), 4, 4, 3, data.data()));
-    Picture image = PictureFiles().read(path, 2);
+    Picture image = test::read_picture(path, 2);
     CHECK(image.width == 4);  // stb_image pictures are not shrunk
     CHECK(at(image, 3, 3) == Rgb8{0, 200, 0});
 }
@@ -192,11 +194,11 @@ TEST_CASE("damaged files are errors, not crashes") {
         std::ofstream(dir / name, std::ios::binary) << bytes;
         return dir / name;
     };
-    CHECK_THROWS_AS(PictureFiles().read(write("bad.jpg", "\xFF\xD8\xFF\xE0 not really a jpeg"sv)), Error);
-    CHECK_THROWS_AS(PictureFiles().read(write("bad.png", "\x89PNG\r\n\x1A\n then nothing"sv)), Error);
-    CHECK_THROWS_AS(PictureFiles().read(write("bad.webp", "RIFF\0\0\0\0WEBPVP8 "sv)), Error);
-    CHECK_THROWS_AS(PictureFiles().read(write("empty.png", "")), Error);
-    CHECK_THROWS_AS(PictureFiles().read(dir / "missing.png"), Error);
+    CHECK_THROWS_AS(test::read_picture(write("bad.jpg", "\xFF\xD8\xFF\xE0 not really a jpeg"sv)), Error);
+    CHECK_THROWS_AS(test::read_picture(write("bad.png", "\x89PNG\r\n\x1A\n then nothing"sv)), Error);
+    CHECK_THROWS_AS(test::read_picture(write("bad.webp", "RIFF\0\0\0\0WEBPVP8 "sv)), Error);
+    CHECK_THROWS_AS(test::read_picture(write("empty.png", "")), Error);
+    CHECK_THROWS_AS(test::read_picture(dir / "missing.png"), Error);
 
     // A PNG cut short in the middle of its pixels.
     fs::path path = dir / "cut.png";
@@ -205,7 +207,7 @@ TEST_CASE("damaged files are errors, not crashes") {
     });
     REQUIRE(stbi_write_png(path.c_str(), 300, 300, 3, data.data(), 300 * 3));
     fs::resize_file(path, fs::file_size(path) / 2);
-    CHECK_THROWS_AS(PictureFiles().read(path, 10), Error);
+    CHECK_THROWS_AS(test::read_picture(path, 10), Error);
 }
 
 namespace {
@@ -220,12 +222,6 @@ bool mapped(std::string_view name) {
     return false;
 }
 
-/// Points WPC_PICTURES_MODULE somewhere else while it exists.
-struct PicturesModule {
-    explicit PicturesModule(const fs::path& file) { setenv("WPC_PICTURES_MODULE", file.c_str(), 1); }
-    ~PicturesModule() { setenv("WPC_PICTURES_MODULE", WPC_BUILT_PICTURES, 1); }
-};
-
 }  // namespace
 
 TEST_CASE("the decoders are in memory only while a picture is read") {
@@ -235,7 +231,7 @@ TEST_CASE("the decoders are in memory only while a picture is read") {
     REQUIRE(stbi_write_png(path.c_str(), 8, 8, 3, data.data(), 8 * 3));
 
     CHECK_FALSE(mapped("/wpc-pictures.so"));
-    CHECK(PictureFiles().read(path).width == 8);
+    CHECK(test::read_picture(path).width == 8);
     CHECK_FALSE(mapped("/wpc-pictures.so"));
 }
 
@@ -247,7 +243,7 @@ TEST_CASE("damaged files are errors after the decoders are unloaded") {
     TempDir dir;
     std::ofstream(dir / "bad.jpg", std::ios::binary) << "\xFF\xD8\xFF\xE0 not really a jpeg"sv;
     try {
-        PictureFiles().read(dir / "bad.jpg");
+        test::read_picture(dir / "bad.jpg");
         FAIL("no error");
     } catch (const Error& e) {
         CHECK(std::string_view(e.what()).starts_with("cannot read image: "));
@@ -260,13 +256,36 @@ TEST_CASE("pictures need the decoders' module of this build") {
     fs::path path = dir / "small.png";
     std::vector<uint8_t> data = pixels(2, 2, [](uint32_t x, uint32_t) { return halves(x, 2); });
     REQUIRE(stbi_write_png(path.c_str(), 2, 2, 3, data.data(), 2 * 3));
+    PictureFiles missing(dir / "wpc-pictures.so");
+    CHECK_THROWS_WITH_AS(missing.read(path, 0), doctest::Contains("cannot load"), Error);
+    PictureFiles other(fs::path(WPC_TEST_MODULES) / "wpc-driver-fake.so");  // not the decoders
+    CHECK_THROWS_WITH_AS(other.read(path, 0), doctest::Contains("has no picture decoders"), Error);
+    CHECK(test::read_picture(path).width == 2);
+}
+
+TEST_CASE("only regular files are read, so a FIFO doesn't block the reader") {
+    TempDir dir;
+    fs::path fifo = dir / "wallpaper.png";
+    REQUIRE(::mkfifo(fifo.c_str(), 0600) == 0);
+    CHECK_THROWS_WITH_AS(test::read_picture(fifo, 10), doctest::Contains("not a regular file"), Error);
+    CHECK_THROWS_AS(test::read_picture(dir.path, 10), Error);  // a folder
+}
+
+TEST_CASE("damaged files: a picture too big to build at once is refused, not all the memory") {
+    // A PNG header claiming 40000 × 40000 pixels: past the decoders' limit for its sides.
+    TempDir dir;
+    fs::path path = dir / "huge.png";
+    REQUIRE(stbi_write_png(path.c_str(), 1, 1, 3, std::vector<uint8_t>{1, 2, 3}.data(), 3));
+    std::string bytes;
     {
-        PicturesModule missing(dir / "wpc-pictures.so");
-        CHECK_THROWS_WITH_AS(PictureFiles().read(path), doctest::Contains("cannot load"), Error);
+        std::ifstream in(path, std::ios::binary);
+        bytes.assign(std::istreambuf_iterator<char>(in), {});
     }
-    {
-        PicturesModule other(fs::path(WPC_TEST_MODULES) / "wpc-driver-fake.so");  // not the decoders
-        CHECK_THROWS_WITH_AS(PictureFiles().read(path), doctest::Contains("has no picture decoders"), Error);
-    }
-    CHECK(PictureFiles().read(path).width == 2);
+    auto put_u32 = [&](size_t at, uint32_t v) {
+        for (int i = 0; i < 4; ++i) bytes[at + i] = static_cast<char>(v >> (24 - 8 * i));
+    };
+    put_u32(16, 40000);  // IHDR width
+    put_u32(20, 40000);  // IHDR height (the CRC is now wrong too: either way, an error)
+    std::ofstream(path, std::ios::binary | std::ios::trunc) << bytes;
+    CHECK_THROWS_AS(test::read_picture(path, 10), Error);
 }

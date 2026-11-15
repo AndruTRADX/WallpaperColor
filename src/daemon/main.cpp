@@ -1,33 +1,27 @@
 // wallpapercolord: paints the RGB hardware with the colours of the wallpaper on screen.
 //
-// This file only picks the real implementations of the service's contracts and connects them
-// (the "composition root"). What the service does is in application/.
+// This file only picks the real implementation of each port and connects them (the
+// "composition root"). What the service does is in service/; the ports' implementations are in
+// kde/ (the desktop) and system/ (the rest of the computer).
 
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
 
-#include "daemon/application/events/desktop_changed.hpp"
-#include "daemon/application/events/hardware_changed.hpp"
-#include "daemon/application/events/request_received.hpp"
-#include "daemon/application/events/settings_changed.hpp"
-#include "daemon/application/features/exchange_messages/exchange_messages.hpp"
-#include "daemon/infrastructure/external/driver_modules.hpp"
-#include "daemon/infrastructure/external/message_codec.hpp"
-#include "daemon/infrastructure/external/pictures.hpp"
-#include "daemon/infrastructure/external/settings_source.hpp"
-#include "daemon/infrastructure/services/clock.hpp"
-#include "daemon/infrastructure/services/colour_scheme.hpp"
-#include "daemon/infrastructure/services/file_watch.hpp"
-#include "daemon/infrastructure/services/logind.hpp"
-#include "daemon/infrastructure/services/memory.hpp"
-#include "daemon/infrastructure/services/plasma_shell.hpp"
-#include "daemon/infrastructure/services/request_socket.hpp"
-#include "daemon/infrastructure/services/wallpaper_packages.hpp"
-#include "daemon/presentation/service_loop/service_loop.hpp"
-#include "shared/infrastructure/services/settings_file.hpp"
-#include "shared/infrastructure/services/socket_path.hpp"
+#include "daemon/kde/plasma.hpp"
+#include "daemon/service/events.hpp"
+#include "daemon/service/loop.hpp"
+#include "daemon/system/clock.hpp"
+#include "daemon/system/file_watch.hpp"
+#include "daemon/system/logind.hpp"
+#include "daemon/system/request_server.hpp"
+#include "daemon/system/settings_source.hpp"
+#include "drivers/host/driver_host.hpp"
+#include "pictures/picture_files.hpp"
+#include "protocol/json.hpp"
+#include "protocol/socket_path.hpp"
+#include "settings/settings_file.hpp"
 #include "utils/error.hpp"
 #include "utils/event_loop.hpp"
 #include "utils/log.hpp"
@@ -37,39 +31,36 @@ namespace fs = std::filesystem;
 
 int main(int argc, char** argv) {
     try {
-        std::optional<fs::path> path = argc > 1 ? std::optional<fs::path>(argv[1]) : SettingsFile().default_path();
+        std::optional<fs::path> path = argc > 1 ? std::optional<fs::path>(argv[1]) : default_settings_path();
         if (!path) throw Error("no config path: set HOME or XDG_CONFIG_HOME");
+
+        // First: a second service stops here, before it touches anything of the first one.
+        UnixRequestServer requests(ipc::socket_path());
 
         // The service's one wait: inotify, both D-Buses, the retry and burst timeouts, and the
         // request socket's thread handing a request over.
         EventLoop events;
         InotifyFileWatch files(events);  // one inotify for the settings file and KDE's files
         SettingsFileSource settings(*path);
-        HostDriverModules drivers;
-        PictureFilesAdapter pictures;
-        ProtocolJsonCodec codec;
+        ModuleHost drivers(default_driver_folder());
+        PictureFiles pictures(default_decoders_module());
         SystemClock clock;
-        GlibcMemory memory;
-        PlasmaPackages packages;
-        KdeColourScheme scheme;
-        std::optional<PlasmaShell> plasma;
+        std::optional<PlasmaDesktop> desktop;
         try {
-            plasma.emplace(events);
+            desktop.emplace(events);
         } catch (const Error& e) {
             throw Error(std::string("cannot reach the session bus: ") + e.what());
         }
         Logind logind(events);
-        UnixRequestSocket socket(SocketPath().path());
 
         Notifications notifications(events);
         Notify notify = [&notifications](Notification n) { notifications.send(std::move(n)); };
-        DesktopChangedEvent desktop_changed(*plasma, files, notify);
+        DesktopChangedEvent desktop_changed(*desktop, files, notify);
         SettingsChangedEvent settings_changed(settings, files, notify);
         HardwareChangedEvent hardware_changed(logind, files, notify);
-        RequestReceivedEvent request_received(socket, notify, write_answer(codec, ipc::Response::error("service busy")));
+        RequestReceivedEvent request_received(requests, notify, ipc::encode(ipc::Response::error("service busy")));
 
-        ServiceLoop loop(ServiceParts{*plasma, packages, scheme, pictures, settings, drivers, codec, clock, memory},
-                         notifications, desktop_changed);
+        ServiceLoop loop(Ports{*desktop, pictures, settings, drivers, clock}, notifications, desktop_changed);
         request_received.start();
         desktop_changed.start();
         try {

@@ -206,8 +206,9 @@ applied by the service within a second.
 ## Configuration
 
 `~/.config/wallpapercolor/config.toml`. Every key is optional; these are the defaults. The
-service reloads the file when it changes. A mistake (an unknown key, a wrong type) is reported in
-the service log, and the defaults are used until it is fixed.
+service reloads the file when it changes. A mistake (an unknown key, a wrong type, a number
+outside its range) is reported in the service log with its line, and the defaults are used until
+it is fixed.
 
 ```toml
 [led]
@@ -217,13 +218,13 @@ mode = "arc"        # "arc": the three colours as a gradient (around fans and th
 fade = 0.6          # seconds a colour change takes (0 = at once, at most 1.5)
 
 [extract]           # how colours are picked from the picture
-min_saturation = 0.7    # "intensity": how saturated dark and dull colours become (0.2-1)
-pastel_gain = 2.5       # how much light, soft colours are strengthened
+min_saturation = 0.7    # "intensity": how saturated dark and dull colours become (0-1)
+pastel_gain = 2.5       # how much light, soft colours are strengthened (0-100)
 skin_weight = 0.15      # how much skin tones count (0 = never picked, 1 = like any colour)
-min_chroma = 0.06       # colours duller than this count as grey; an all-grey picture gives white
-min_share = 0.005       # colours covering less of the picture than this are ignored
-palette_size = 10       # how many colours the picture is reduced to
-sample_size = 96        # the picture is shrunk to this many pixels per side first
+min_chroma = 0.06       # colours duller than this count as grey; an all-grey picture gives white (0-1)
+min_share = 0.005       # colours covering less of the picture than this are ignored (0-1)
+palette_size = 10       # how many colours the picture is reduced to (1-64)
+sample_size = 96        # the picture is shrunk to this many pixels per side first (1-1024)
 
 [components]        # what is painted; the Drivers page (d) writes this table
 fans = true
@@ -284,6 +285,7 @@ journalctl --user -u wallpapercolord -f      # its log, live
 | Problem | What to do |
 | --- | --- |
 | `the service is not running` | `systemctl --user start wallpapercolord`; if it stops again, read `journalctl --user -u wallpapercolord`. |
+| `another wallpapercolord is already running` | Only one service runs per user. Stop the other one (`systemctl --user stop wallpapercolord`, or the one you started by hand) first. |
 | `cannot reach the OpenRGB server` | OpenLinkHub is not running, or `enableOpenRGBTargetServer` is off (install step 1). The service retries on its own. |
 | A device is never painted | Turn on **OpenRGB Integration** for it in OpenLinkHub's web page. |
 | `fusion2: cannot open /dev/hidraw… Permission denied` | Install the udev rule (install step 3), then restart the service. Or untick Motherboard and ARGB headers on the Drivers page. |

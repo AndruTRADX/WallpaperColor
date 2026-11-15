@@ -10,5 +10,25 @@ Restart=on-failure
 RestartSec=5
 Nice=10
 
+# The sandbox: what the service may do, and nothing more (`systemd-analyze --user security
+# wallpapercolord` scores it). It needs D-Bus and its socket (AF_UNIX), the OpenRGB server
+# (AF_INET, AF_INET6), the devices in /dev and to read the pictures; it never needs new
+# privileges, memory both writable and executable, real-time scheduling, or the system calls
+# of administration. These work in every user session; wallpapercolord.service.d/sandbox.conf
+# adds the ones that need user namespaces, where the system has them.
+NoNewPrivileges=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
 [Install]
 WantedBy=graphical-session.target

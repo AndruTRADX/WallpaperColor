@@ -1,19 +1,16 @@
-// The service's features and loop, with a fake for every contract: the desktop, the settings,
-// the pictures, the drivers, the clock. This is what talking through contracts makes possible:
-// no hardware, no files, no D-Bus.
+// The service's use cases and loop, with a fake for every port: the desktop, the settings, the
+// pictures, the drivers, the clock, the files. This is what talking through ports makes
+// possible: no hardware, no files, no D-Bus.
 
 #include <algorithm>
 
 #include <doctest/doctest.h>
 
-#include "daemon/application/events/hardware_changed.hpp"
-#include "daemon/application/events/settings_changed.hpp"
-#include "daemon/application/features/exchange_messages/exchange_messages.hpp"
-#include "daemon/application/features/paint_wallpaper/paint_wallpaper.hpp"
-#include "daemon/application/features/report_status/report_status.hpp"
-#include "daemon/domain/fade.hpp"
-#include "daemon/presentation/requests/requests.hpp"
-#include "daemon/presentation/service_loop/service_loop.hpp"
+#include "daemon/service/events.hpp"
+#include "daemon/service/loop.hpp"
+#include "daemon/service/rules.hpp"
+#include "daemon/service/service.hpp"
+#include "protocol/json.hpp"
 #include "utils/error.hpp"
 
 using namespace wpc;
@@ -21,19 +18,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
-struct FakeDesktop final : DesktopWallpaper, DesktopSignals {
-    WallpaperSettings on{"org.kde.image", fs::path("/pictures/red.png"), {}};
-    WallpaperSettings current() override { return on; }
+struct FakeDesktop final : Desktop {
+    OnScreen on{"org.kde.image", fs::path("/pictures/red.png"), {}};
+    OnScreen on_screen() override { return on; }
     void listen(std::function<void()>) override {}
     std::vector<fs::path> settings_files() override { return {}; }
-};
-
-struct FakePackages final : WallpaperPackages {
-    std::optional<fs::path> picture(const fs::path& image, bool) override { return image; }
-};
-
-struct FakeScheme final : ColourScheme {
-    bool is_dark() override { return false; }
 };
 
 struct FakeSettings final : SettingsSource {
@@ -47,7 +36,7 @@ struct FakeSettings final : SettingsSource {
 };
 
 /// Every picture is plain red.
-struct FakePictures final : Pictures {
+struct FakePictures final : PictureReader {
     int reads = 0;
     std::function<void(const fs::path&)> opened;  // a file watch would see the picture opened
 
@@ -62,7 +51,7 @@ struct FakePictures final : Pictures {
 };
 
 /// One driver, "cooler", with one fan; remembers what it showed, fails when told to.
-struct FakeDrivers final : DriverModules {
+struct FakeDrivers final : DriverHost {
     std::vector<std::string> in_memory;
     std::vector<std::vector<Rgb>> shown;
     bool unplugged = false;
@@ -90,11 +79,6 @@ struct FakeClock final : Clock {
     TimePoint now() override { return at; }
     void wait_until(TimePoint time) override { at = std::max(at, time); }
     uint64_t unix_seconds() override { return 1000; }
-};
-
-struct FakeMemory final : Memory {
-    int releases = 0;
-    void release() override { ++releases; }
 };
 
 /// Remembers the watches, so a test can see what is watched and make a change happen.
@@ -134,35 +118,18 @@ struct FakeFiles final : FileWatch {
 };
 
 /// The computer's signals, made to happen by the test.
-struct FakeSystem final : SystemSignals {
+struct FakeSystem final : SystemEvents {
     std::function<void()> woke;
     void listen(std::function<void()> w) override { woke = std::move(w); }
     fs::path device_folder() override { return "/dev"; }
 };
 
-/// Lines are the requests' names.
-struct FakeCodec final : MessageCodec {
-    ipc::Request decode_request(std::string_view line) override {
-        if (line == "status") return ipc::Request::Status;
-        if (line == "pause") return ipc::Request::Pause;
-        if (line == "resume") return ipc::Request::Resume;
-        throw Error("unknown command");
-    }
-    std::string encode(const ipc::Response& r) override {
-        return r.kind == ipc::Response::Kind::Error ? "error: " + r.message : "ok";
-    }
-};
-
 struct Setup {
     FakeDesktop desktop;
-    FakePackages packages;
-    FakeScheme scheme;
     FakeSettings settings;
     FakePictures pictures;
     FakeDrivers drivers;
-    FakeCodec codec;
     FakeClock clock;
-    FakeMemory memory;
     FakeFiles files;
     EventLoop events;  // nothing waits in it: the fakes send at once
     Notifications notifications{events};
@@ -170,13 +137,16 @@ struct Setup {
 
     /// No settle time: a burst is over as soon as nothing is waiting.
     ServiceLoop loop() {
-        return ServiceLoop(ServiceParts{desktop, packages, scheme, pictures, settings, drivers, codec, clock, memory},
-                           notifications, desktop_changed, std::chrono::milliseconds(0));
+        return ServiceLoop(Ports{desktop, pictures, settings, drivers, clock}, notifications, desktop_changed,
+                           std::chrono::milliseconds(0));
     }
 
-    /// A request from the terminal, as the socket hands it to the loop.
-    void request(const std::string& line) {
-        notifications.send(RequestNotice{line, std::make_shared<Channel<std::string>>()});
+    /// A request from the terminal, as the socket hands it to the loop; its answer comes back
+    /// through the returned reply.
+    std::shared_ptr<Reply> request(ipc::Request r) {
+        auto reply = std::make_shared<Reply>();
+        notifications.send(RequestNotice{ipc::encode(r), reply});
+        return reply;
     }
 
     /// Time passes (only on the service's clock).
@@ -196,8 +166,8 @@ int settle(ServiceLoop& service, int most = 20) {
     return turns;
 }
 
-WallpaperSettings slideshow(const char* slide) {
-    return WallpaperSettings{"org.kde.slideshow", fs::path(slide), {fs::path("/pictures")}};
+OnScreen slideshow(const char* slide) {
+    return OnScreen{"org.kde.slideshow", fs::path(slide), {fs::path("/pictures")}};
 }
 
 }  // namespace
@@ -217,7 +187,6 @@ TEST_CASE("the service paints the picture's colours") {
     CHECK(status.stops.size() == 3);
     CHECK(status.image == fs::path("/pictures/red.png"));
     CHECK(status.last_sent == 1000);
-    CHECK(s.memory.releases == 1);  // after reading the picture
 }
 
 TEST_CASE("a problem painting is shown and tried again, without reading the picture again") {
@@ -253,7 +222,7 @@ TEST_CASE("R1: while the desktop has no screen, the slideshow stays followed and
     REQUIRE(s.files.watching("/pictures"));
 
     // The monitor goes off: Plasma has no screen and answers with no plugin.
-    s.desktop.on = WallpaperSettings{};
+    s.desktop.on = OnScreen{};
     s.notifications.send(DesktopChangedNotice{});
     CHECK(settle(service) == 1);
     CHECK(s.files.watching("/pictures"));
@@ -296,7 +265,7 @@ TEST_CASE("R2: paused with a retry pending, the loop goes quiet") {
     service.check_wallpaper(false);
     REQUIRE(service.state().retry);
 
-    s.request("pause");
+    s.request(ipc::Request::Pause);
     CHECK(settle(service) == 1);
     REQUIRE(service.state().paused);
 
@@ -307,7 +276,7 @@ TEST_CASE("R2: paused with a retry pending, the loop goes quiet") {
     // Resumed: painted at once.
     s.drivers.unplugged = false;
     size_t shown = s.drivers.shown.size();
-    s.request("resume");
+    s.request(ipc::Request::Resume);
     CHECK(settle(service) == 1);
     CHECK(s.drivers.shown.size() > shown);
     CHECK_FALSE(report_status(service.state()).error);
@@ -459,7 +428,7 @@ TEST_CASE("R4: paused, the hardware coming back paints nothing and the loop stay
     hardware.start();
     ServiceLoop service = s.loop();
     service.check_wallpaper(false);
-    s.request("pause");
+    s.request(ipc::Request::Pause);
     settle(service);
 
     system.woke();
@@ -473,7 +442,7 @@ TEST_CASE("the loop does nothing, and does not wait, when nothing happened") {
     ServiceLoop service = s.loop();
     service.check_wallpaper(false);
     CHECK_FALSE(service.step(std::chrono::milliseconds(0)));
-    s.request("status");
+    s.request(ipc::Request::Status);
     CHECK(service.step(std::chrono::milliseconds(0)));  // answered
     CHECK(s.drivers.shown.size() == 1);                   // and nothing painted for it
 }
@@ -486,7 +455,6 @@ TEST_CASE("a driver is loaded only while one of its components is chosen") {
     service.settings_changed();
     CHECK(s.drivers.in_memory.empty());
     CHECK_FALSE(report_status(service.state()).drivers.at(0).loaded);
-    CHECK(s.memory.releases == 1);  // after unloading it
 
     s.settings.config.components.on[static_cast<size_t>(Component::Fans)] = true;
     service.settings_changed();
@@ -515,16 +483,34 @@ TEST_CASE("requests run their feature") {
     CHECK(state.testing);
     CHECK(paint_now);  // white at once
 
-    ReadRequest bad = read_request(s.codec, "dance");
-    CHECK_FALSE(bad.request);
-    CHECK(bad.problem == "bad request: unknown command");
-    CHECK(read_request(s.codec, "status").request == ipc::Request::Status);
+    ipc::Response bad = ipc::decode_response(answer_line("dance", state, paint_now));
+    CHECK(bad.kind == ipc::Response::Kind::Error);
+    CHECK(bad.message.starts_with("bad request: "));
+    ipc::Response status = ipc::decode_response(answer_line(ipc::encode(ipc::Request::Status), state, paint_now));
+    CHECK(status.kind == ipc::Response::Kind::Status);
+    CHECK(status.status.paused);
+}
+
+TEST_CASE("a request answered \"busy\" is given up: it doesn't happen later") {
+    Setup s;
+    ServiceLoop service = s.loop();
+    service.check_wallpaper(false);
+    std::shared_ptr<Reply> reply = s.request(ipc::Request::Pause);
+    CHECK_FALSE(reply->wait(std::chrono::milliseconds(0)));  // the terminal stopped waiting
+    REQUIRE(reply->given_up());
+    settle(service);
+    CHECK_FALSE(service.state().paused);
+
+    std::shared_ptr<Reply> answered = s.request(ipc::Request::Pause);
+    settle(service);
+    CHECK(service.state().paused);
+    CHECK(answered->wait(std::chrono::milliseconds(0)) == ipc::encode(ipc::Response::ok()));
 }
 
 namespace {
 
 /// Two devices, a fan and a RAM stick; remembers every frame each one got.
-struct TwoDevices final : DriverModules {
+struct TwoDevices final : DriverHost {
     std::map<size_t, std::vector<std::vector<Rgb>>> shown;  // device → its frames
     std::vector<DriverModule> installed(std::vector<std::string>&) override { return {}; }
     std::vector<std::string> load(const std::string&, const DriverSettings&) override { return {}; }
